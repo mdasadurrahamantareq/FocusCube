@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FocusCube</title>
+<style>
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — FocusCube palette
+═══════════════════════════════════════════════════ */
+:root {
+  --bg:        #F0F2EF;
+  --surface:   #FBFBFB;
+  --border:    #D6DBD5;
+  --sub:       #9A9E99;
+  --ink:       #4F4F4F;
+  --ink-lt:    #767A75;
+  --accent:    #6B8F6A;
+  --accent-bg: #E8EDE7;
+  --accent-lt: rgba(107,143,106,.12);
+  --accent-dk: #5A7A59;
+  --red:       #B05C5C;
+  --red-bg:    #F7EEEE;
+  --amber:     #8F7040;
+  --amber-bg:  #F5EFE3;
+  --shadow:    0 1px 4px rgba(79,79,79,.07),0 4px 16px rgba(79,79,79,.05);
+  --shadow-md: 0 4px 20px rgba(79,79,79,.12);
+  --font: Helvetica Neue,Helvetica,Arial,sans-serif;
+  --r: 12px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased}
+.hide{display:none!important}
+.screen{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:28px}
+
+/* ── Brand ── */
+.brand-wrap{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+.brand-icon svg{display:block}
+.brand-text{display:flex;flex-direction:column;line-height:1}
+.brand-name{font-size:22px;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
+.brand-name span{color:var(--accent)}
+.brand-tag{font-size:10px;color:var(--sub);letter-spacing:.12em;text-transform:uppercase;margin-top:3px}
+.divider{height:1px;background:var(--border);margin:20px 0}
+.card{width:100%;max-width:380px}
+
+/* ── Inputs ── */
+.field{margin-bottom:14px}
+label{display:block;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--sub);margin-bottom:7px}
+input[type=text],input[type=number]{width:100%;height:48px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink);font-family:var(--font);font-size:17px;padding:0 14px;outline:none;border-radius:var(--r);transition:border-color .15s,box-shadow .15s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
+input::placeholder{color:#C0C5BF;font-size:14px}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+input[type=number]{-moz-appearance:textfield}
+.hint{font-size:11px;color:var(--sub);margin-top:5px}
+
+/* ── Buttons ── */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;border:none;border-radius:var(--r);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s,transform .12s}
+.btn:hover{opacity:.9}.btn:active{transform:scale(.99)}
+.btn-primary{background:var(--accent);color:#fff;margin-top:10px;box-shadow:0 2px 8px rgba(107,143,106,.3)}
+.btn-ghost{background:none;border:1.5px solid var(--border);color:var(--ink-lt);margin-top:8px;font-size:12px}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 14px;border:none;border-radius:8px;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;transition:opacity .15s}
+.btn-sm:hover{opacity:.85}
+.btn-sm.accept{background:var(--accent);color:#fff}
+.btn-sm.decline{background:var(--red-bg);color:var(--red);border:1px solid #e8c8c8}
+.err{font-size:11px;color:var(--red);margin-top:10px;text-align:center;min-height:16px}
+.fn{font-size:10px;color:#BCC0BB;text-align:center;margin-top:22px;letter-spacing:.08em;text-transform:uppercase}
+
+/* ── Waiting screen ── */
+#scr-wait{text-align:center}
+.wait-icon-wrap{width:72px;height:72px;background:var(--accent-bg);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 22px;animation:float 4s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.wait-title{font-size:19px;font-weight:600;margin-bottom:8px}
+.wait-sub{font-size:13px;color:var(--sub);line-height:1.65;margin-bottom:20px}
+.wait-num-box{background:var(--accent-bg);border:1px solid var(--border);border-radius:var(--r);padding:14px 20px;display:inline-block;margin-bottom:20px}
+.wait-num-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--sub);margin-bottom:4px}
+.wait-num-val{font-size:28px;font-weight:600;color:var(--accent);letter-spacing:.04em}
+.wait-dots{display:flex;gap:7px;justify-content:center;margin:18px auto}
+.wd{width:7px;height:7px;border-radius:50%;background:var(--accent);opacity:.3;animation:wdp 1.6s ease-in-out infinite}
+.wd:nth-child(2){animation-delay:.22s}.wd:nth-child(3){animation-delay:.44s}
+@keyframes wdp{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:1;transform:scale(1.35)}}
+.wait-declined{background:var(--red-bg);border:1px solid #e8c8c8;border-radius:10px;padding:12px 16px;font-size:12px;color:var(--red);margin-bottom:14px;display:none}
+
+/* ── Connection status pill (chat header) ── */
+.conn-pill{
+  display:flex;align-items:center;gap:5px;
+  height:22px;padding:0 8px;border-radius:11px;
+  font-size:10px;font-weight:500;letter-spacing:.04em;
+  background:var(--accent-bg);color:var(--accent-dk);
+  transition:all .3s;flex-shrink:0;
+}
+.conn-pill.warn{background:var(--amber-bg);color:var(--amber)}
+.conn-pill.bad{background:var(--red-bg);color:var(--red)}
+.conn-dot{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 2.4s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── Chat layout ── */
+#scr-chat{display:none;flex-direction:column;height:100dvh;max-width:760px;margin:0 auto;background:var(--surface);min-height:unset;padding:0;align-items:unset;justify-content:unset}
+.chat-hd{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:60px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;position:sticky;top:0;z-index:20}
+.chat-hd-left{display:flex;align-items:center;gap:10px}
+.hd-name{font-size:15px;font-weight:600}
+.hd-room{font-size:10px;color:var(--sub);display:flex;align-items:center;gap:5px;margin-top:1px;letter-spacing:.04em}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 2.4s ease-in-out infinite}
+.av{width:34px;height:34px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;user-select:none;transition:background .15s}
+.av:hover{background:#DDE5DC}
+.av.admin-av{background:var(--amber-bg);color:var(--amber);box-shadow:0 0 0 2px var(--amber-bg),0 0 0 3px var(--amber)}
+.chat-hd-right{display:flex;gap:4px;align-items:center}
+.hbtn{height:30px;padding:0 10px;border:1px solid var(--border);background:none;color:var(--sub);border-radius:8px;font-family:var(--font);font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;transition:all .15s}
+.hbtn:hover{border-color:var(--accent);color:var(--accent)}
+.hbtn.danger{border-color:#e8c8c8;color:var(--red)}
+.hbtn.danger:hover{background:var(--red-bg)}
+
+/* ── Members panel ── */
+#members-panel{border-bottom:1px solid var(--border);background:var(--bg);padding:10px 16px;display:none}
+#members-panel.open{display:block}
+.mp-title{font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);margin-bottom:8px}
+.mp-list{display:flex;flex-wrap:wrap;gap:6px}
+.mp-chip{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 5px;font-size:11px;color:var(--ink)}
+.mp-av{width:20px;height:20px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.mp-av.is-admin{background:var(--amber-bg);color:var(--amber)}
+.mp-transfer{margin-left:4px;background:none;border:none;font-family:var(--font);font-size:9px;color:#5B7EA6;cursor:pointer;padding:0;letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+.mp-transfer:hover{text-decoration:underline}
+
+/* ── Messages ── */
+#msgs{flex:1;overflow-y:auto;padding:20px 16px 8px;display:flex;flex-direction:column;gap:2px}
+#msgs::-webkit-scrollbar{width:3px}
+#msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.day-div{align-self:center;font-size:10px;color:var(--sub);background:var(--bg);padding:3px 12px;border-radius:20px;margin:12px 0 8px;letter-spacing:.06em}
+.sys-msg{align-self:center;font-size:10px;color:var(--sub);background:var(--bg);padding:3px 12px;border-radius:20px;margin:3px 0;letter-spacing:.04em;text-align:center}
+.sys-msg.admin-ev{color:var(--amber);background:var(--amber-bg)}
+.sys-msg.join-ev{color:var(--accent-dk);background:var(--accent-bg)}
+.msg-grp{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
+.msg-grp.mine{align-items:flex-end}.msg-grp.theirs{align-items:flex-start}
+.sender-lbl{font-size:10px;color:var(--sub);padding:0 3px;margin-bottom:3px;letter-spacing:.02em}
+.bubble{max-width:min(74%,460px);padding:9px 13px;font-size:14px;line-height:1.55;word-break:break-word;white-space:pre-wrap;animation:pop .16s cubic-bezier(.34,1.4,.64,1)}
+@keyframes pop{from{opacity:0;transform:scale(.93) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.mine .bubble{background:#6B8F6A;color:#fff;border-radius:var(--r) var(--r) 3px var(--r)}
+.theirs .bubble{background:var(--surface);color:var(--ink);border-radius:var(--r) var(--r) var(--r) 3px;box-shadow:var(--shadow)}
+.bubble-time{font-size:9px;opacity:.5;margin-top:2px;padding:0 2px}
+.mine .bubble-time{color:#fff;text-align:right}
+.theirs .bubble-time{color:var(--sub)}
+.typing-row{display:flex;align-items:center;gap:7px;padding:4px 16px;height:0;overflow:hidden;opacity:0;transition:height .2s,opacity .2s}
+.typing-row.show{height:28px;opacity:1}
+.tdots{display:flex;gap:3px;align-items:center}
+.td{width:5px;height:5px;border-radius:50%;background:var(--sub);animation:tb 1.2s infinite}
+.td:nth-child(2){animation-delay:.15s}.td:nth-child(3){animation-delay:.3s}
+@keyframes tb{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px);background:var(--accent)}}
+.tlbl{font-size:10px;color:var(--sub)}
+.empty{align-self:center;margin:auto;text-align:center;padding:40px 20px}
+.empty-icon-wrap{width:56px;height:56px;background:var(--accent-bg);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.empty-txt{font-size:12px;color:var(--sub);line-height:1.7}
+
+/* ── Input bar ── */
+.input-wrap{padding:8px 12px 16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.input-row{display:flex;gap:7px;align-items:flex-end;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:7px 7px 7px 15px;transition:border-color .15s,box-shadow .15s}
+.input-row:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
+#txt{flex:1;border:none;background:none;font-family:var(--font);font-size:14px;color:var(--ink);resize:none;outline:none;max-height:120px;line-height:1.5;padding:2px 0;height:22px}
+#txt::placeholder{color:#BCC0BB}
+.send-btn{width:36px;height:36px;flex-shrink:0;background:var(--accent);border:none;border-radius:9px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .12s}
+.send-btn:hover{opacity:.88}.send-btn:active{transform:scale(.94)}
+.send-btn:disabled{opacity:.25;cursor:not-allowed;transform:none}
+.send-btn svg{width:16px;height:16px}
+
+/* ── Request banner ── */
+#req-banner{position:fixed;top:0;left:50%;transform:translateX(-50%) translateY(-130px);width:calc(100% - 24px);max-width:400px;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 16px 16px;box-shadow:var(--shadow-md);padding:16px 18px 14px;z-index:99;transition:transform .36s cubic-bezier(.34,1.15,.64,1)}
+#req-banner.show{transform:translateX(-50%) translateY(0)}
+.req-eyebrow{font-size:9px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.req-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1.5s infinite}
+.req-name{font-size:16px;font-weight:600;margin-bottom:12px}
+.req-btns{display:flex;gap:7px}
+.req-btns .btn-sm{flex:1;height:34px;font-size:11px}
+
+/* ── Modal ── */
+#modal-overlay{position:fixed;inset:0;background:rgba(79,79,79,.25);display:flex;align-items:center;justify-content:center;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s}
+#modal-overlay.show{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border-radius:16px;padding:22px 20px;width:calc(100% - 40px);max-width:340px;box-shadow:var(--shadow-md);transform:translateY(14px) scale(.97);transition:transform .2s}
+#modal-overlay.show .modal{transform:translateY(0) scale(1)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:7px}
+.modal-sub{font-size:13px;color:var(--sub);line-height:1.55;margin-bottom:18px;white-space:pre-line}
+.modal-btns{display:flex;gap:8px}
+.modal-btns .btn{height:42px;font-size:12px;margin:0}
+.kick-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px;max-height:150px;overflow-y:auto}
+.kick-item{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:8px;padding:8px 10px;font-size:13px}
+.kick-btn{background:var(--red-bg);border:1px solid #e8c8c8;color:var(--red);font-family:var(--font);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:500}
+.kick-btn:hover{background:#f0d4d4}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;font-size:11px;padding:9px 18px;border-radius:30px;opacity:0;pointer-events:none;transition:all .22s;z-index:200;white-space:nowrap}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ══ SCREEN 1: JOIN ══ -->
+<div id="scr-join" class="screen">
+  <div class="card">
+    <div class="brand-wrap">
+      <div class="brand-icon">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <path d="M20 4L35 12.5V14L20 22.5L5 14V12.5L20 4Z" fill="#E0E5DF" stroke="#6B8F6A" stroke-width="1.2" stroke-linejoin="round"/>
+          <path d="M20 5.8L33.2 13.25L20 20.7L6.8 13.25L20 5.8Z" fill="#FBFBFB" fill-opacity="0.5"/>
+          <path d="M5 14V27.5L20 36V22.5L5 14Z" fill="#D6DBD5" stroke="#6B8F6A" stroke-width="1.2" stroke-linejoin="round"/>
+          <path d="M35 14V27.5L20 36V22.5L35 14Z" fill="#B8C4B7" stroke="#6B8F6A" stroke-width="1.2" stroke-linejoin="round"/>
+          <circle cx="20" cy="13.5" r="1.8" fill="#6B8F6A" opacity="0.7"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">Focus<span>Cube</span></div>
+        <div class="brand-tag">Instant · Peer-to-Peer · Zero servers</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="field">
+      <label>Your name</label>
+      <input id="inp-name" type="text" placeholder="Enter your name" maxlength="24" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Chat number</label>
+      <input id="inp-room" type="number" placeholder="e.g. 482910">
+      <div class="hint">Share this number with anyone you want to chat with</div>
+    </div>
+    <button class="btn btn-primary" onclick="handleJoin()">
+      Enter Room
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </button>
+    <div class="err" id="join-err"></div>
+    <div class="fn">WebRTC · PeerJS · No database · No server</div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 2: WAITING ══ -->
+<div id="scr-wait" class="screen hide">
+  <div class="card" style="text-align:center">
+    <div class="wait-icon-wrap">
+      <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+        <path d="M20 4L35 12.5V14L20 22.5L5 14V12.5L20 4Z" fill="#E0E5DF" stroke="#6B8F6A" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M5 14V27.5L20 36V22.5L5 14Z" fill="#D6DBD5" stroke="#6B8F6A" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M35 14V27.5L20 36V22.5L35 14Z" fill="#B8C4B7" stroke="#6B8F6A" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="wait-title">Waiting for admin</div>
+    <p class="wait-sub">The room admin needs to accept your request.<br>Keep this page open.</p>
+    <div class="wait-num-box">
+      <div class="wait-num-label">Chat number</div>
+      <div class="wait-num-val" id="wait-num">—</div>
+    </div>
+    <div class="wait-dots"><div class="wd"></div><div class="wd"></div><div class="wd"></div></div>
+    <div class="wait-declined" id="wait-declined">Request declined. Try again or use a different number.</div>
+    <button class="btn btn-ghost" style="max-width:300px;margin:0 auto" onclick="cancelWait()">← Cancel</button>
+  </div>
+</div>
+
+<!-- ══ SCREEN 3: CHAT ══ -->
+<div id="scr-chat" class="screen">
+  <header class="chat-hd">
+    <div class="chat-hd-left">
+      <div class="av" id="my-av" onclick="toggleMembers()">–</div>
+      <div>
+        <div class="hd-name" id="hd-name">–</div>
+        <div class="hd-room"><div class="live-dot"></div><span id="hd-room">–</span></div>
+      </div>
+    </div>
+    <div class="chat-hd-right">
+      <div class="conn-pill" id="conn-pill">
+        <div class="conn-dot"></div>
+        <span id="conn-label">Connected</span>
+      </div>
+      <button class="hbtn" onclick="copyRoom()">Copy #</button>
+      <button class="hbtn hide" id="btn-kick" onclick="openKick()">Kick</button>
+      <button class="hbtn hide" id="btn-clear" onclick="openClear()">Clear</button>
+      <button class="hbtn" onclick="leaveRoom()">Leave</button>
+    </div>
+  </header>
+
+  <div id="members-panel">
+    <div class="mp-title">Members</div>
+    <div class="mp-list" id="mp-list"></div>
+  </div>
+
+  <div id="msgs">
+    <div class="empty" id="empty-state">
+      <div class="empty-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
+          <path d="M20 4L35 12.5V14L20 22.5L5 14V12.5L20 4Z" fill="#D6DBD5" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M5 14V27.5L20 36V22.5L5 14Z" fill="#C8CEC7" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M35 14V27.5L20 36V22.5L35 14Z" fill="#B8C0B7" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="empty-txt">No messages yet.<br>Start the conversation.</div>
+    </div>
+  </div>
+
+  <div class="typing-row" id="typing-row">
+    <div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>
+    <div class="tlbl" id="tlbl">typing…</div>
+  </div>
+
+  <div class="input-wrap">
+    <div class="input-row">
+      <textarea id="txt" placeholder="Write a message…" rows="1"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMsg()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REQUEST BANNER ══ -->
+<div id="req-banner">
+  <div class="req-eyebrow"><div class="req-dot"></div>Join Request</div>
+  <div class="req-name" id="req-name">Someone wants to join</div>
+  <div class="req-btns">
+    <button class="btn-sm accept"  onclick="respondRequest(true)">Accept</button>
+    <button class="btn-sm decline" onclick="respondRequest(false)">Decline</button>
+  </div>
+</div>
+
+<!-- ══ MODAL ══ -->
+<div id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Confirm</div>
+    <div class="modal-sub"   id="modal-sub">Are you sure?</div>
+    <div id="modal-body"></div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" style="margin:0" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" style="margin:0" id="modal-ok" onclick="modalConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- PeerJS CDN — only dependency, ~60 KB, no database, pure WebRTC -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  FocusCube — WebRTC P2P via PeerJS
+//
+//  HOW IT WORKS (no server, no database):
+//
+//  PeerJS uses a free public signaling server ONLY to exchange
+//  WebRTC handshake info (SDP offer/answer + ICE candidates).
+//  After that, all messages flow directly peer-to-peer.
+//  Nothing is stored anywhere. History is in-memory only.
+//
+//  TOPOLOGY:
+//  • Room creator (admin) = HOST peer, ID = "fc-{roomNum}-host"
+//  • Joiners           = connect to the host peer ID
+//  • All member↔member messages route through the host (star topology)
+//  • Host broadcasts to everyone, members send only to host
+//
+//  ADMIN SYSTEM:
+//  • Admin = host peer (first to claim the room ID)
+//  • If host closes tab, next accepted member becomes new host
+//  • Admin transfer = host reassigns "host" peer ID ownership
+//
+//  MESSAGE PROTOCOL (JSON packets over DataChannel):
+//  { type: 'chat',     sender, text, ts }
+//  { type: 'sys',      event: 'join'|'leave'|'admin', text, ts }
+//  { type: 'typing',   sender, active: bool }
+//  { type: 'members',  list: [{name, isAdmin}] }   — host→all
+//  { type: 'request',  name, reqId }               — joiner→host
+//  { type: 'response', reqId, accepted: bool }      — host→joiner
+//  { type: 'history',  messages: [] }              — host→new joiner
+//  { type: 'kick',     target }                    — host→all
+//  { type: 'clear' }                               — host→all
+//  { type: 'transfer', newAdmin }                  — host→all
+// ════════════════════════════════════════════════════════════════
+
+// ── State ─────────────────────────────────────────────────────
+let myName    = '';
+let roomNum   = '';
+let isAdmin   = false;
+let peer      = null;   // my PeerJS instance
+let hostConn  = null;   // my connection to the host (if I'm a joiner)
+let members   = {};     // { name: { conn, isAdmin } }  (admin tracks all)
+let msgHistory = [];    // in-memory message log
+let pendingReq = null;  // { name, conn, reqId } — admin's pending request
+let waitReqId  = null;  // joiner's own reqId while waiting
+let modalAction = null;
+let typingTimers = {};  // { name: timerHandle }
+let myTypingTimer = null;
+let lastDay   = '';
+let curGrp    = null;
+let curGrpSender = null;
+
+// ── ENTRY POINT ───────────────────────────────────────────────
+window.handleJoin = function () {
+  const nameEl = document.getElementById('inp-name');
+  const roomEl = document.getElementById('inp-room');
+  const errEl  = document.getElementById('join-err');
+
+  myName  = nameEl.value.trim();
+  roomNum = roomEl.value.trim();
+
+  if (!myName)              { errEl.textContent = 'Please enter your name.'; return; }
+  if (!roomNum || isNaN(roomNum)) { errEl.textContent = 'Please enter a valid chat number.'; return; }
+
+  errEl.textContent = 'Connecting…';
+  localStorage.setItem('fc_name', myName);
+
+  // Try to become the host (admin) by claiming the host peer ID.
+  // PeerJS will error if the ID is already taken — that means a host
+  // exists and we should connect as a joiner instead.
+  const hostId = makeHostId(roomNum);
+  peer = new Peer(hostId, peerConfig());
+
+  peer.on('open', id => {
+    // We got the host ID — we are the admin
+    isAdmin = true;
+    members[myName] = { conn: null, isAdmin: true };
+    enterChat();
+    setConn('host', `# ${roomNum}`);
+    toast('Room created — share # ' + roomNum);
+  });
+
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') {
+      // Host exists — join as a peer
+      peer.destroy();
+      peer = null;
+      joinAsGuest();
+    } else {
+      errEl.textContent = 'Connection error: ' + err.message;
+      console.error(err);
+    }
+  });
+
+  // Admin: accept incoming connections from joiners
+  peer.on('connection', conn => handleIncoming(conn));
+};
+
+// ── HOST ID SCHEME ────────────────────────────────────────────
+function makeHostId(num) {
+  // Prefix prevents collision with random peer IDs
+  return 'focuscube-room-' + num;
+}
+
+function peerConfig() {
+  // Use PeerJS public server + Google STUN for NAT traversal
+  // All of these are free and have no usage limits for this scale
+  return {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ]
+    }
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  JOIN AS GUEST — connect to existing host
+// ══════════════════════════════════════════════════════════════
+function joinAsGuest() {
+  // Generate a unique ephemeral peer ID for ourselves
+  const myId = 'fc-' + roomNum + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  peer = new Peer(myId, peerConfig());
+
+  peer.on('open', () => {
+    const hostId = makeHostId(roomNum);
+    hostConn = peer.connect(hostId, { reliable: true });
+
+    hostConn.on('open', () => {
+      // Send join request
+      waitReqId = 'req-' + Date.now();
+      send(hostConn, { type: 'request', name: myName, reqId: waitReqId });
+
+      // Show waiting screen
+      showScreen('scr-wait');
+      document.getElementById('wait-num').textContent = roomNum;
+      document.getElementById('wait-declined').style.display = 'none';
+    });
+
+    hostConn.on('data', packet => handleHostPacket(packet));
+
+    hostConn.on('close', () => {
+      // Host went offline while we were waiting or chatting
+      if (document.getElementById('scr-wait').classList.contains('hide') === false) {
+        // Still on waiting screen
+        document.getElementById('wait-declined').style.display = 'block';
+        document.getElementById('wait-declined').textContent = 'Host disconnected. Try again.';
+      } else {
+        setConn('warn', 'Host left');
+        toast('Admin left the room');
+      }
+    });
+
+    hostConn.on('error', err => {
+      document.getElementById('join-err').textContent = 'Could not reach host: ' + err.message;
+      showScreen('scr-join');
+    });
+  });
+
+  peer.on('error', err => {
+    document.getElementById('join-err').textContent = 'Peer error: ' + err.message;
+    showScreen('scr-join');
+    console.error(err);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PACKETS — GUEST receives from HOST
+// ══════════════════════════════════════════════════════════════
+function handleHostPacket(packet) {
+  switch (packet.type) {
+
+    case 'response':
+      if (packet.reqId !== waitReqId) break;
+      if (packet.accepted) {
+        waitReqId = null;
+        enterChat();
+      } else {
+        document.getElementById('wait-declined').style.display = 'block';
+      }
+      break;
+
+    case 'history':
+      // Replay stored messages on join
+      msgHistory = packet.messages || [];
+      msgHistory.forEach(m => renderMsg(m, false));
+      scrollBottom();
+      break;
+
+    case 'chat':
+      addToHistory(packet);
+      renderMsg(packet, true);
+      break;
+
+    case 'sys':
+      addToHistory(packet);
+      renderMsg(packet, true);
+      break;
+
+    case 'typing':
+      showTyping(packet.sender, packet.active);
+      break;
+
+    case 'members':
+      applyMemberList(packet.list);
+      break;
+
+    case 'kick':
+      if (packet.target === myName) {
+        toast('You were removed by the admin');
+        setTimeout(() => location.reload(), 1500);
+      }
+      break;
+
+    case 'clear':
+      msgHistory = [];
+      lastDay = ''; curGrp = null; curGrpSender = null;
+      document.getElementById('msgs').innerHTML = EMPTY_HTML;
+      renderSys('Room cleared by admin', 'admin-ev');
+      break;
+
+    case 'transfer':
+      // Admin transferred to someone else
+      renderSys(packet.newAdmin + ' is now the admin', 'admin-ev');
+      if (packet.newAdmin === myName) {
+        // We are the new host — restart as host
+        becomeHost();
+      }
+      break;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PACKETS — HOST receives from a MEMBER connection
+// ══════════════════════════════════════════════════════════════
+function handleIncoming(conn) {
+  conn.on('open', () => {
+    // We don't know who this is yet — wait for their first packet
+  });
+
+  conn.on('data', packet => {
+    switch (packet.type) {
+
+      case 'request': {
+        // New joiner — show accept/decline banner
+        if (pendingReq) {
+          // Already handling one — queue by declining extras for now
+          send(conn, { type: 'response', reqId: packet.reqId, accepted: false });
+          break;
+        }
+        pendingReq = { name: packet.name, conn, reqId: packet.reqId };
+        document.getElementById('req-name').textContent = packet.name + ' wants to join';
+        document.getElementById('req-banner').classList.add('show');
+        break;
+      }
+
+      case 'chat': {
+        // Relay to all other members + add to history
+        const name = getMemberNameByConn(conn);
+        if (!name) break;
+        packet.sender = name; // enforce sender identity
+        addToHistory(packet);
+        broadcast(packet, conn);
+        renderMsg(packet, true);
+        break;
+      }
+
+      case 'typing': {
+        const name = getMemberNameByConn(conn);
+        if (!name) break;
+        packet.sender = name;
+        broadcastRaw(packet, conn);
+        showTyping(name, packet.active);
+        break;
+      }
+    }
+  });
+
+  conn.on('close', () => {
+    const name = getMemberNameByConn(conn);
+    if (name && name !== myName) {
+      delete members[name];
+      broadcastMembers();
+      broadcastSys({ event: 'leave', text: name + ' left', ts: Date.now() });
+      renderSys(name + ' left', '');
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: ACCEPT / DECLINE
+// ══════════════════════════════════════════════════════════════
+window.respondRequest = function (accepted) {
+  if (!pendingReq) return;
+  document.getElementById('req-banner').classList.remove('show');
+  const { name, conn, reqId } = pendingReq;
+  pendingReq = null;
+
+  send(conn, { type: 'response', reqId, accepted });
+
+  if (accepted) {
+    // Register member
+    members[name] = { conn, isAdmin: false };
+
+    // Send full history to new member
+    send(conn, { type: 'history', messages: msgHistory });
+
+    // Announce join
+    const sysMsg = { type: 'sys', event: 'join', text: name + ' joined', ts: Date.now() };
+    addToHistory(sysMsg);
+    broadcast(sysMsg, null);
+    renderSys(name + ' joined', 'join-ev');
+
+    broadcastMembers();
+  }
+};
+
+window.cancelWait = function () {
+  if (hostConn) hostConn.close();
+  location.reload();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  SEND MESSAGE
+// ══════════════════════════════════════════════════════════════
+window.sendMsg = function () {
+  const el = document.getElementById('txt');
+  const text = el.value.trim();
+  if (!text) return;
+  el.value = ''; el.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  clearMyTyping();
+
+  const packet = { type: 'chat', sender: myName, text, ts: Date.now() };
+
+  if (isAdmin) {
+    addToHistory(packet);
+    broadcast(packet, null);
+    renderMsg(packet, true);
+  } else {
+    // Send to host — host will relay and add to history
+    if (hostConn && hostConn.open) {
+      send(hostConn, { type: 'chat', text, ts: packet.ts });
+    } else {
+      toast('Not connected — message lost');
+    }
+  }
+
+  document.getElementById('send-btn').disabled = false;
+  el.focus();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  TYPING INDICATOR
+// ══════════════════════════════════════════════════════════════
+function broadcastTyping(active) {
+  const packet = { type: 'typing', sender: myName, active };
+  if (isAdmin) {
+    broadcastRaw(packet, null);
+  } else if (hostConn && hostConn.open) {
+    send(hostConn, packet);
+  }
+}
+
+function clearMyTyping() {
+  if (myTypingTimer) { clearTimeout(myTypingTimer); myTypingTimer = null; }
+  broadcastTyping(false);
+}
+
+function showTyping(name, active) {
+  if (typingTimers[name]) clearTimeout(typingTimers[name]);
+  if (active) {
+    typingTimers[name] = setTimeout(() => showTyping(name, false), 3000);
+  } else {
+    delete typingTimers[name];
+  }
+  const others = Object.keys(typingTimers);
+  const row = document.getElementById('typing-row');
+  if (others.length) {
+    document.getElementById('tlbl').textContent = others.join(', ') + ' typing…';
+    row.classList.add('show');
+  } else {
+    row.classList.remove('show');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: MEMBERS LIST
+// ══════════════════════════════════════════════════════════════
+function broadcastMembers() {
+  if (!isAdmin) return;
+  const list = Object.entries(members).map(([name, m]) => ({
+    name,
+    isAdmin: !!m.isAdmin
+  }));
+  broadcastRaw({ type: 'members', list }, null);
+  buildMembersPanel(list);
+}
+
+function applyMemberList(list) {
+  buildMembersPanel(list);
+}
+
+function buildMembersPanel(list) {
+  const el = document.getElementById('mp-list');
+  el.innerHTML = '';
+  list.forEach(m => {
+    const chip = document.createElement('div');
+    chip.className = 'mp-chip';
+    chip.innerHTML =
+      `<div class="mp-av${m.isAdmin ? ' is-admin' : ''}">${m.name[0].toUpperCase()}</div>` +
+      `<span>${esc(m.name)}${m.isAdmin ? ' ★' : ''}</span>` +
+      (isAdmin && !m.isAdmin
+        ? `<button class="mp-transfer" onclick="openTransfer('${esc(m.name)}')">Make Admin</button>`
+        : '');
+    el.appendChild(chip);
+  });
+}
+
+window.toggleMembers = function () {
+  document.getElementById('members-panel').classList.toggle('open');
+};
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: TRANSFER ADMIN
+// ══════════════════════════════════════════════════════════════
+window.openTransfer = function (target) {
+  openModal(
+    `Transfer admin to ${target}?`,
+    `${target} will become the new admin.\nYou will lose admin privileges.`,
+    () => {
+      const packet = { type: 'transfer', newAdmin: target };
+      broadcastRaw(packet, null);
+      renderSys(target + ' is now the admin', 'admin-ev');
+
+      // Notify all members
+      broadcastSys({ event: 'admin', text: target + ' is now the admin', ts: Date.now() });
+
+      // Hand off host role
+      peer.destroy();
+      isAdmin = false;
+      peer = null;
+      toast('Admin transferred to ' + target);
+      buildMembersPanel(Object.entries(members).map(([n, m]) => ({
+        name: n, isAdmin: n === target
+      })));
+    },
+    'Transfer', false
+  );
+};
+
+function becomeHost() {
+  // Reconnect as the new host peer ID
+  isAdmin = true;
+  const hostId = makeHostId(roomNum);
+  const newPeer = new Peer(hostId, peerConfig());
+  newPeer.on('open', () => {
+    peer = newPeer;
+    peer.on('connection', conn => handleIncoming(conn));
+    updateHeaderUI();
+    toast('You are now the admin');
+  });
+  newPeer.on('error', err => toast('Could not claim host ID: ' + err.message));
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: KICK
+// ══════════════════════════════════════════════════════════════
+window.openKick = function () {
+  const others = Object.keys(members).filter(n => n !== myName);
+  if (!others.length) { toast('No other members.'); return; }
+  document.getElementById('modal-title').textContent = 'Remove a member';
+  document.getElementById('modal-sub').textContent   = 'Select who to remove:';
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '';
+  const list = document.createElement('div');
+  list.className = 'kick-list';
+  others.forEach(name => {
+    const row = document.createElement('div');
+    row.className = 'kick-item';
+    row.innerHTML = `<span>${esc(name)}</span><button class="kick-btn" onclick="doKick('${esc(name)}')">Remove</button>`;
+    list.appendChild(row);
+  });
+  body.appendChild(list);
+  document.getElementById('modal-ok').style.display = 'none';
+  document.getElementById('modal-overlay').classList.add('show');
+};
+
+window.doKick = function (name) {
+  closeModal();
+  const m = members[name];
+  if (m && m.conn) {
+    send(m.conn, { type: 'kick', target: name });
+    setTimeout(() => m.conn.close(), 500);
+  }
+  delete members[name];
+  broadcastRaw({ type: 'kick', target: name }, null);
+  broadcastMembers();
+  broadcastSys({ event: 'leave', text: name + ' was removed', ts: Date.now() });
+  renderSys(name + ' was removed by admin', 'admin-ev');
+  toast(name + ' removed.');
+};
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN: CLEAR
+// ══════════════════════════════════════════════════════════════
+window.openClear = function () {
+  openModal(
+    'Clear all messages?',
+    'Clears the message history for everyone in this session.',
+    () => {
+      msgHistory = [];
+      lastDay = ''; curGrp = null; curGrpSender = null;
+      document.getElementById('msgs').innerHTML = EMPTY_HTML;
+      broadcastRaw({ type: 'clear' }, null);
+      renderSys('Room cleared by admin', 'admin-ev');
+      toast('Cleared.');
+    },
+    'Clear All', true
+  );
+};
+
+// ══════════════════════════════════════════════════════════════
+//  LEAVE
+// ══════════════════════════════════════════════════════════════
+window.leaveRoom = function () {
+  clearMyTyping();
+  if (isAdmin) {
+    // Transfer to first available member before leaving
+    const next = Object.keys(members).find(n => n !== myName);
+    if (next) {
+      broadcastRaw({ type: 'transfer', newAdmin: next }, null);
+      broadcastSys({ event: 'admin', text: next + ' is now the admin', ts: Date.now() });
+    }
+  }
+  if (peer) peer.destroy();
+  location.reload();
+};
+
+// ══════════════════════════════════════════════════════════════
+//  BROADCAST HELPERS (admin-only)
+// ══════════════════════════════════════════════════════════════
+function broadcast(packet, excludeConn) {
+  // Send to all member connections except the sender's conn
+  Object.values(members).forEach(m => {
+    if (m.conn && m.conn !== excludeConn && m.conn.open) {
+      send(m.conn, packet);
+    }
+  });
+}
+
+function broadcastRaw(packet, excludeConn) {
+  broadcast(packet, excludeConn);
+}
+
+function broadcastSys(fields) {
+  const packet = { type: 'sys', ...fields };
+  addToHistory(packet);
+  broadcast(packet, null);
+}
+
+function getMemberNameByConn(conn) {
+  return Object.keys(members).find(n => members[n].conn === conn) || null;
+}
+
+function send(conn, packet) {
+  try {
+    if (conn && conn.open) conn.send(packet);
+  } catch (e) { console.warn('send failed', e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MESSAGE HISTORY + RENDER
+// ══════════════════════════════════════════════════════════════
+function addToHistory(msg) {
+  msgHistory.push(msg);
+  // Cap at 500 messages to avoid memory bloat
+  if (msgHistory.length > 500) msgHistory.shift();
+}
+
+const CUBE_ICON = `<svg width="24" height="24" viewBox="0 0 40 40" fill="none"><path d="M20 4L35 12.5V14L20 22.5L5 14V12.5L20 4Z" fill="#D6DBD5" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 14V27.5L20 36V22.5L5 14Z" fill="#C8CEC7" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/><path d="M35 14V27.5L20 36V22.5L35 14Z" fill="#B8C0B7" stroke="#9A9E99" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+const EMPTY_HTML = `<div class="empty" id="empty-state"><div class="empty-icon-wrap">${CUBE_ICON}</div><div class="empty-txt">No messages yet.<br>Start the conversation.</div></div>`;
+
+function renderMsg(msg, live) {
+  if (!msg) return;
+  const msgsEl = document.getElementById('msgs');
+  document.getElementById('empty-state')?.remove();
+
+  if (msg.type === 'sys') {
+    renderSys(msg.text, msg.event === 'join' ? 'join-ev' : msg.event === 'admin' ? 'admin-ev' : '');
+    return;
+  }
+
+  const isMe = msg.sender === myName;
+  const date = new Date(msg.ts || Date.now());
+  const dayLabel = date.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+
+  if (dayLabel !== lastDay) {
+    const d = document.createElement('div');
+    d.className = 'day-div'; d.textContent = dayLabel;
+    msgsEl.appendChild(d);
+    lastDay = dayLabel; curGrp = null; curGrpSender = null;
+  }
+
+  if (curGrpSender !== msg.sender) {
+    const grp = document.createElement('div');
+    grp.className = 'msg-grp ' + (isMe ? 'mine' : 'theirs');
+    if (!isMe) {
+      const sl = document.createElement('div');
+      sl.className = 'sender-lbl';
+      sl.textContent = msg.sender + (members[msg.sender]?.isAdmin ? ' ★' : '');
+      grp.appendChild(sl);
+    }
+    msgsEl.appendChild(grp);
+    curGrp = grp; curGrpSender = msg.sender;
+  }
+
+  const b = document.createElement('div');
+  b.className = 'bubble'; b.textContent = msg.text;
+  if (!live) b.style.animation = 'none'; // no animation for history replay
+  curGrp.appendChild(b);
+
+  let t = curGrp.querySelector('.bubble-time');
+  if (t) t.remove();
+  t = document.createElement('div');
+  t.className = 'bubble-time';
+  t.textContent = date.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  curGrp.appendChild(t);
+
+  if (live) scrollBottom();
+}
+
+function renderSys(text, cls) {
+  const msgsEl = document.getElementById('msgs');
+  const el = document.createElement('div');
+  el.className = 'sys-msg ' + (cls || '');
+  el.textContent = text;
+  msgsEl.appendChild(el);
+  curGrp = null; curGrpSender = null;
+  scrollBottom();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════════════════════════
+function enterChat() {
+  showScreen('scr-chat');
+  updateHeaderUI();
+
+  // Admin announces themselves
+  if (isAdmin) {
+    members[myName] = { conn: null, isAdmin: true };
+    broadcastMembers();
+  }
+}
+
+function updateHeaderUI() {
+  document.getElementById('hd-name').textContent = myName + (isAdmin ? ' ★' : '');
+  document.getElementById('hd-room').textContent = '# ' + roomNum;
+  const av = document.getElementById('my-av');
+  av.textContent = myName[0].toUpperCase();
+  av.className = 'av' + (isAdmin ? ' admin-av' : '');
+  document.getElementById('btn-kick').classList.toggle('hide', !isAdmin);
+  document.getElementById('btn-clear').classList.toggle('hide', !isAdmin);
+}
+
+function setConn(state, label) {
+  const pill = document.getElementById('conn-pill');
+  const lbl  = document.getElementById('conn-label');
+  lbl.textContent = label || '';
+  pill.className = 'conn-pill' + (state === 'warn' ? ' warn' : state === 'bad' ? ' bad' : '');
+}
+
+function showScreen(id) {
+  ['scr-join','scr-wait','scr-chat'].forEach(s => {
+    const el = document.getElementById(s);
+    const on = s === id;
+    el.classList.toggle('hide', !on);
+    if (s === 'scr-chat') el.style.display = on ? 'flex' : 'none';
+  });
+}
+
+function scrollBottom() {
+  const el = document.getElementById('msgs');
+  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+}
+
+window.copyRoom = function () {
+  navigator.clipboard.writeText(roomNum).then(() => toast('Chat number copied'));
+};
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  setTimeout(() => t.classList.remove('on'), 2400);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function openModal(title, sub, onConfirm, btnLabel = 'Confirm', danger = true) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-sub').textContent   = sub;
+  document.getElementById('modal-body').innerHTML    = '';
+  const ok = document.getElementById('modal-ok');
+  ok.textContent = btnLabel; ok.style.display = '';
+  ok.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+  ok.style.margin = '0';
+  modalAction = onConfirm;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+window.closeModal  = function () {
+  document.getElementById('modal-overlay').classList.remove('show');
+  modalAction = null;
+};
+window.modalConfirm = function () { closeModal(); if (modalAction) modalAction(); };
+
+// ── INPUT WIRING ───────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('fc_name');
+  if (saved) document.getElementById('inp-name').value = saved;
+
+  const txt = document.getElementById('txt');
+  txt.addEventListener('input', () => {
+    txt.style.height = 'auto';
+    txt.style.height = Math.min(txt.scrollHeight, 120) + 'px';
+    broadcastTyping(true);
+    clearTimeout(myTypingTimer);
+    myTypingTimer = setTimeout(() => broadcastTyping(false), 2500);
+  });
+  txt.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+  ['inp-name','inp-room'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleJoin();
+    });
+  });
+});
+</script>
+</body>
+</html>
