@@ -901,10 +901,183 @@ window.submitPw=function(){
   document.getElementById('wait-err').style.display='none';
 };
 
-/* ── PEER CONFIG ─────────────────────────────────────────────── */
+/* ── PEER CONFIG & RESILIENCE SYSTEM ─────────────────────────────
+ *
+ *  Why connections crash:
+ *  1. PeerJS signaling server drops idle WebSocket after ~60s of
+ *     no signaling traffic (not the same as DataChannel traffic).
+ *  2. Browser suspends background tabs, killing timers & sockets.
+ *  3. Network hiccups / router NAT timeouts (~2 min on mobile).
+ *  4. ICE connection state goes "failed" after 30s with no STUN reply.
+ *
+ *  What we do:
+ *  A. HEARTBEAT  — send a tiny {type:'ping'} over every open
+ *     DataChannel every 20 seconds. This keeps the ICE/DTLS
+ *     connection alive and resets NAT timeouts.
+ *  B. PEER RECONNECT — if peer.socket disconnects, wait 2s and
+ *     recreate the Peer object (re-register on signaling server).
+ *     Existing DataChannels survive because they're WebRTC P2P.
+ *  C. CHANNEL RECONNECT — guests monitor hostConn every 30s;
+ *     if it's closed they reconnect to the host peer ID.
+ *  D. PAGE VISIBILITY — on visibilitychange, immediately run a
+ *     health check and reconnect if needed. Browsers freeze JS
+ *     while hidden; the first resume tick restores everything.
+ *  E. WAKE LOCK (Screen Wake Lock API) — on desktop Chrome/Edge,
+ *     requests a screen wake lock so the OS doesn't sleep the tab.
+ *     Silently skipped on unsupported browsers.
+ *  F. NO-SLEEP XHR PING — fires a tiny fetch every 25s to
+ *     prevent aggressive background throttling in Safari/Firefox.
+ * ────────────────────────────────────────────────────────────── */
+
 function hostId(){ return 'focuscube-room-'+roomNum; }
 function peerCfg(){
-  return { config:{ iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}]}};
+  return {
+    debug: 0,
+    config:{ iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'},
+      {urls:'stun:stun2.l.google.com:19302'},
+      {urls:'stun:global.stun.twilio.com:3478'},
+      {urls:'stun:stun.cloudflare.com:3478'},
+    ]},
+    pingInterval: 3000,   // PeerJS internal WS ping to signaling server
+  };
+}
+
+// ── Timers ──────────────────────────────────────────────────────
+let _heartbeatTimer  = null;   // DataChannel keepalive
+let _reconnectTimer  = null;   // debounce reconnect attempts
+let _wakeLock        = null;   // Screen Wake Lock handle
+let _reconnectCount  = 0;      // track reconnect attempts
+const MAX_RECONNECT  = 999;    // essentially unlimited while tab is open
+const HEARTBEAT_MS   = 20000;  // ping peers every 20 s
+const RECONNECT_BASE = 2000;   // base delay for reconnects (doubles up to 30 s)
+let _alive           = true;   // set false only on intentional leave
+
+// ── Wake Lock ───────────────────────────────────────────────────
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator)) return;
+  try{
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release',()=>{ _wakeLock=null; });
+  }catch(e){ /* not supported or tab in background — ignore */ }
+}
+// Re-acquire on visibility restore
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible'){
+    if(!_wakeLock) await requestWakeLock();
+    // Health check after browser tab resume
+    if(_alive) setTimeout(checkHealth, 500);
+  }
+});
+
+// ── No-sleep fetch ping ─────────────────────────────────────────
+// Sends a tiny request every 25 s to prevent aggressive
+// background timer throttling in Safari and Firefox.
+function startNoSleepPing(){
+  setInterval(()=>{
+    if(!_alive) return;
+    // Ping a tiny well-known resource (1×1 gif, cache-busted)
+    fetch('https://www.gstatic.com/generate_204',{mode:'no-cors',cache:'no-store'}).catch(()=>{});
+  }, 25000);
+}
+
+// ── Heartbeat ───────────────────────────────────────────────────
+function startHeartbeat(){
+  if(_heartbeatTimer) clearInterval(_heartbeatTimer);
+  _heartbeatTimer = setInterval(()=>{
+    if(!_alive) return;
+    const ping={type:'ping'};
+    if(isAdmin){
+      // Ping all member DataChannels
+      Object.values(members).forEach(m=>{
+        if(m.conn && m.conn.open) send(m.conn, ping);
+      });
+      // Also poke the signaling WS by checking peer state
+      if(peer && peer.disconnected && !peer.destroyed){
+        peer.reconnect();
+      }
+    } else if(hostConn){
+      if(hostConn.open){
+        send(hostConn, ping);
+      } else {
+        // DataChannel dropped — try to reconnect
+        reconnectGuest();
+      }
+    }
+  }, HEARTBEAT_MS);
+}
+
+// ── Health check ────────────────────────────────────────────────
+function checkHealth(){
+  if(!_alive) return;
+  if(isAdmin){
+    if(!peer || peer.destroyed){
+      rebuildAdminPeer();
+    } else if(peer.disconnected){
+      peer.reconnect();
+    }
+  } else {
+    if(!hostConn || !hostConn.open){
+      reconnectGuest();
+    }
+  }
+}
+
+// ── Admin peer rebuild ──────────────────────────────────────────
+let _rebuildAttempt = 0;
+function rebuildAdminPeer(){
+  if(!_alive || !isAdmin) return;
+  clearTimeout(_reconnectTimer);
+  _rebuildAttempt++;
+  const delay = Math.min(RECONNECT_BASE * Math.pow(1.5, Math.min(_rebuildAttempt-1, 8)), 30000);
+  setConn('warn', 'Reconnecting…');
+  _reconnectTimer = setTimeout(()=>{
+    const np = new Peer(hostId(), peerCfg());
+    np.on('open',()=>{
+      _rebuildAttempt = 0;
+      if(peer && !peer.destroyed) peer.destroy();
+      peer = np;
+      peer.on('connection', c => handleIncoming(c));
+      peer.on('disconnected',()=>{ if(_alive) peer.reconnect(); });
+      peer.on('error', e => { if(_alive && e.type!=='unavailable-id') setTimeout(rebuildAdminPeer, 3000); });
+      setConn('live','Live');
+      toast('Connection restored');
+    });
+    np.on('error', e =>{
+      if(e.type==='unavailable-id'){
+        // Someone else grabbed our ID during the gap — reclaim
+        setTimeout(rebuildAdminPeer, 5000);
+      } else {
+        setTimeout(rebuildAdminPeer, 5000);
+      }
+    });
+  }, delay);
+}
+
+// ── Guest reconnect ──────────────────────────────────────────────
+let _guestReconAttempt = 0;
+function reconnectGuest(){
+  if(!_alive || isAdmin) return;
+  clearTimeout(_reconnectTimer);
+  _guestReconAttempt++;
+  const delay = Math.min(RECONNECT_BASE * Math.pow(1.5, Math.min(_guestReconAttempt-1, 8)), 30000);
+  setConn('warn','Reconnecting…');
+  _reconnectTimer = setTimeout(()=>{
+    if(hostConn){ try{ hostConn.close(); }catch(e){} hostConn=null; }
+    const nc = peer.connect(hostId(),{reliable:true,serialization:'json'});
+    nc.on('open',()=>{
+      _guestReconAttempt = 0;
+      hostConn = nc;
+      hostConn.on('data', p => onHostPkt(p));
+      hostConn.on('close', () => { if(_alive) setTimeout(reconnectGuest, 3000); });
+      // Re-announce presence
+      send(hostConn,{type:'rejoin',name:myName,avatar:profile.avatar});
+      setConn('live','Live');
+      toast('Connection restored');
+    });
+    nc.on('error', ()=> setTimeout(reconnectGuest, 5000));
+  }, delay);
 }
 
 /* ═══ ENTRY POINT ════════════════════════════════════════════ */
@@ -928,8 +1101,18 @@ window.handleJoin=function(){
     peer=hp;
     isAdmin=true; roomPassword=pw;
     members[myName]={conn:null,isAdmin:true,avatar:profile.avatar};
-    peer.on('connection',c=>handleIncoming(c));
+    peer.on('connection', c=>handleIncoming(c));
+    // Resilience hooks for admin peer
+    peer.on('disconnected',()=>{
+      if(_alive){ setConn('warn','Reconnecting…'); peer.reconnect(); }
+    });
+    peer.on('error', e=>{
+      if(_alive && e.type!=='unavailable-id') setTimeout(rebuildAdminPeer, 3000);
+    });
     enterChat();
+    startHeartbeat();
+    startNoSleepPing();
+    requestWakeLock();
   });
 
   hp.on('error',e=>{
@@ -955,7 +1138,7 @@ function joinGuest(pw){
     hostConn=peer.connect(hostId(),{reliable:true,serialization:'json'});
 
     hostConn.on('open',()=>{
-      // First check if room is locked — host will tell us
+      _guestReconAttempt=0;
       waitReqId='req-'+Date.now();
       send(hostConn,{type:'request',name:myName,reqId:waitReqId,avatar:profile.avatar,password:pw||''});
       showScreen('scr-wait');
@@ -966,16 +1149,28 @@ function joinGuest(pw){
     hostConn.on('data',p=>onHostPkt(p));
 
     hostConn.on('close',()=>{
-      if(!document.getElementById('scr-chat').style.display||document.getElementById('scr-chat').style.display==='none'){
+      if(!_alive) return;
+      const inChat = document.getElementById('scr-chat').style.display==='flex';
+      if(!inChat){
         document.getElementById('wait-err').textContent='Host disconnected.';
         document.getElementById('wait-err').style.display='block';
-      } else { setConn('warn','Host left'); }
+      } else {
+        setConn('warn','Reconnecting…');
+        setTimeout(reconnectGuest, 3000);
+      }
     });
 
-    hostConn.on('error',err=>{
-      document.getElementById('join-err').textContent='Cannot reach host.';
-      showScreen('scr-join');
+    hostConn.on('error',()=>{
+      if(_alive) setTimeout(reconnectGuest, 3000);
     });
+
+    // Guest resilience — peer-level events
+    peer.on('disconnected',()=>{ if(_alive && !peer.destroyed) peer.reconnect(); });
+    peer.on('error',()=>{ if(_alive) setTimeout(reconnectGuest, 5000); });
+
+    startHeartbeat();
+    startNoSleepPing();
+    requestWakeLock();
   });
 
   gp.on('error',e=>{
@@ -1013,6 +1208,7 @@ function onHostPkt(p){
     case 'clear':   msgHistory=[]; lastDay=''; curGrp=null; curGrpSender=null; document.getElementById('msgs').innerHTML=EMPTY_HTML; renderSys('Room cleared','admin-ev'); updateSidebar(); break;
     case 'transfer': renderSys(p.newAdmin+' is now admin','admin-ev'); if(p.newAdmin===myName) becomeHost(); break;
     case 'rename':  if(members[p.oldName]){members[p.newName]={...members[p.oldName],avatar:p.avatar||''};delete members[p.oldName];} break;
+    case 'ping': break; // keepalive — no-op, just prevents idle timeout
     case 'room-config': roomPassword=p.password||''; break;
     case 'file-meta': incomingFiles[p.transferId]={parts:[],got:0,meta:p}; renderFileBubble(p,false); break;
     case 'file-chunk': receiveChunk(p); break;
@@ -1043,7 +1239,20 @@ function handleIncoming(conn){
       case 'typing':{ const name=nameByConn(conn); if(!name) break; broadcastRaw({type:'typing',sender:name,active:p.active},conn); showTyping(name,p.active); catOnType(p.active); break; }
       case 'reaction':{ const name=nameByConn(conn); if(!name) break; const rp={type:'reaction',msgId:p.msgId,emoji:p.emoji,sender:name}; broadcastRaw(rp,conn); applyRxn(p.msgId,p.emoji,name); break; }
       case 'file-meta':{ const name=nameByConn(conn); if(!name) break; p.sender=name; addHist(p); broadcast(p,conn); incomingFiles[p.transferId]={parts:[],got:0,meta:p}; renderFileBubble(p,false); break; }
-      case 'file-chunk': broadcast(p,conn); receiveChunk(p); break;
+      case 'file-chunk':{ broadcast(p,conn); receiveChunk(p); break; }
+      case 'ping': break; // keepalive — no-op
+      case 'rejoin':{
+        // Guest reconnected after network drop — re-register them
+        const existingName = p.name;
+        if(existingName && members[existingName]){
+          members[existingName].conn = conn;
+          send(conn,{type:'history',messages:msgHistory});
+          send(conn,{type:'members',list:Object.entries(members).map(([n,m])=>({name:n,isAdmin:!!m.isAdmin,avatar:m.avatar||''}))});
+          if(roomPassword) send(conn,{type:'room-config',password:roomPassword});
+          setConn('live','Live');
+        }
+        break;
+      }
     }
   });
   conn.on('close',()=>{
@@ -1284,6 +1493,10 @@ window.openClear=function(){
 };
 
 window.leaveRoom=function(){
+  _alive=false;   // stop all reconnect loops
+  clearInterval(_heartbeatTimer);
+  clearTimeout(_reconnectTimer);
+  if(_wakeLock){ _wakeLock.release().catch(()=>{}); _wakeLock=null; }
   clearMyTyping();
   if(isAdmin){ const next=Object.keys(members).find(n=>n!==myName); if(next){broadcastRaw({type:'transfer',newAdmin:next},null);broadcastSys({event:'admin',text:next+' is now the admin',ts:Date.now()});} }
   if(peer) peer.destroy(); location.reload();
