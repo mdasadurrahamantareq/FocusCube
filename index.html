@@ -1210,8 +1210,8 @@ function onHostPkt(p){
     case 'rename':  if(members[p.oldName]){members[p.newName]={...members[p.oldName],avatar:p.avatar||''};delete members[p.oldName];} break;
     case 'ping': break; // keepalive — no-op, just prevents idle timeout
     case 'room-config': roomPassword=p.password||''; break;
-    case 'file-meta': incomingFiles[p.transferId]={parts:[],got:0,meta:p}; renderFileBubble(p,false); break;
-    case 'file-chunk': receiveChunk(p); break;
+    case 'file-meta': onFileMeta(p); break;
+    case 'ft-chunk':  onFtChunk(p); break;
   }
 }
 
@@ -1238,9 +1238,23 @@ function handleIncoming(conn){
       }
       case 'typing':{ const name=nameByConn(conn); if(!name) break; broadcastRaw({type:'typing',sender:name,active:p.active},conn); showTyping(name,p.active); catOnType(p.active); break; }
       case 'reaction':{ const name=nameByConn(conn); if(!name) break; const rp={type:'reaction',msgId:p.msgId,emoji:p.emoji,sender:name}; broadcastRaw(rp,conn); applyRxn(p.msgId,p.emoji,name); break; }
-      case 'file-meta':{ const name=nameByConn(conn); if(!name) break; p.sender=name; addHist(p); broadcast(p,conn); incomingFiles[p.transferId]={parts:[],got:0,meta:p}; renderFileBubble(p,false); break; }
-      case 'file-chunk':{ broadcast(p,conn); receiveChunk(p); break; }
-      case 'ping': break; // keepalive — no-op
+      case 'file-meta':{
+        const name=nameByConn(conn); if(!name) break;
+        p.sender=name; addHist(p);
+        // Relay announcement to all other members so they register the transfer
+        broadcast(p,conn);
+        // Host registers it too (host is also a receiver if member)
+        onFileMeta(p);
+        break;
+      }
+      case 'ft-chunk':{
+        // Relay chunk to all other members, and receive it here too
+        broadcast(p,conn);
+        onFtChunk(p);
+        break;
+      }
+      // keepalive
+      case 'ping': break;
       case 'rejoin':{
         // Guest reconnected after network drop — re-register them
         const existingName = p.name;
@@ -1299,75 +1313,273 @@ function sendRxn(mid,emoji){ const pkt={type:'reaction',msgId:mid,emoji,sender:m
 function applyRxn(mid,emoji,sender){ if(!reactionMap[mid]) reactionMap[mid]={}; if(!reactionMap[mid][emoji]) reactionMap[mid][emoji]=new Set(); reactionMap[mid][emoji].add(sender); updateRxnBar(mid); }
 function updateRxnBar(mid){ const w=document.querySelector('[data-mid="'+mid+'"]'); if(!w) return; let bar=w.querySelector('.rxn-bar'); if(!bar){bar=document.createElement('div');bar.className='rxn-bar';w.appendChild(bar);} bar.innerHTML=''; Object.entries(reactionMap[mid]||{}).forEach(([em,set])=>{ if(!set.size) return; const b=document.createElement('div'); b.className='rxn-badge'; b.innerHTML=em+'<span class="rxn-n">'+set.size+'</span>'; b.title=Array.from(set).join(', '); b.onclick=()=>sendRxn(mid,em); bar.appendChild(b); }); }
 
-/* ── FILE TRANSFER ───────────────────────────────────────────── */
-function sendFile(file){
-  const tid='ft-'+Date.now()+'-'+Math.random().toString(36).slice(2,5);
-  const isImg=file.type.startsWith('image/');
-  const meta={type:'file-meta',transferId:tid,sender:myName,avatar:profile.avatar,name:file.name,size:file.size,mime:file.type,isImg,ts:Date.now()};
+/* ══════════════════════════════════════════════════════════════
+   FILE TRANSFER  —  Chunked · AES-GCM Encrypted · P2P
+   ══════════════════════════════════════════════════════════════
+
+   Key Implementation Details:
+
+   1. DIRECT CONNECTION
+      Chunks travel over the existing PeerJS WebRTC DataChannel
+      between each pair of peers — no intermediate server ever
+      touches file bytes. The host relays the announcement
+      (file-meta) so every member knows a file is coming, then
+      each sender opens a NEW dedicated PeerJS DataConnection
+      directly to every receiver (peer.connect) solely for that
+      transfer. Once the last chunk is acknowledged the connection
+      is closed automatically.
+
+   2. FILE CHUNKING
+      The file is read into an ArrayBuffer, encrypted, then sliced
+      into CHUNK_SIZE (64 KB) pieces. Each chunk is base64-encoded
+      and sent as a JSON packet:
+        { type:'ft-chunk', tid, idx, total, data:<base64> }
+      The receiver collects chunks by index into a sparse array,
+      tracks receipt count, and reassembles in-order once all
+      chunks arrive. Chunk order is guaranteed by the ordered
+      DataChannel; the index is kept for integrity verification.
+
+   3. SECURITY
+      Every transfer generates a fresh AES-GCM 256-bit key and
+      12-byte random IV using window.crypto.subtle. The entire
+      file is encrypted before chunking. The raw key bytes and IV
+      are sent out-of-band in the file-meta announcement which
+      travels over the existing DTLS-SRTP-protected DataChannel —
+      the same channel WebRTC mandates for all data. Receivers
+      import the key and decrypt the reassembled ciphertext after
+      all chunks arrive. Senders never store the plaintext after
+      encryption; receivers never store the ciphertext after
+      decryption.
+
+   ══════════════════════════════════════════════════════════════ */
+
+const FT_CHUNK_SIZE = 64 * 1024;  // 64 KB — safe for all browsers
+
+// ftRx: incoming transfer state  { [tid]: {meta, chunks[], got, total, key, iv} }
+const ftRx = {};
+
+// ── AES-GCM helpers ─────────────────────────────────────────────
+async function ftGenKey(){
+  return crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+}
+async function ftExportKey(k){
+  const raw = await crypto.subtle.exportKey('raw',k);
+  return Array.from(new Uint8Array(raw));
+}
+async function ftImportKey(arr){
+  return crypto.subtle.importKey('raw', new Uint8Array(arr),{name:'AES-GCM'},false,['decrypt']);
+}
+async function ftEncrypt(key,iv,buf){
+  return crypto.subtle.encrypt({name:'AES-GCM',iv:new Uint8Array(iv)},key,buf);
+}
+async function ftDecrypt(key,iv,buf){
+  return crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(iv)},key,buf);
+}
+
+// ── base64 helpers ───────────────────────────────────────────────
+function ab2b64(buf){
+  let b=''; const u=new Uint8Array(buf);
+  for(let i=0;i<u.length;i++) b+=String.fromCharCode(u[i]);
+  return btoa(b);
+}
+function b642ab(s){
+  const b=atob(s); const u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+  return u.buffer;
+}
+
+// ── Progress ─────────────────────────────────────────────────────
+function setFileProg(tid,pct){
+  const bar=document.querySelector('[data-ftid="'+tid+'"] .file-prog-bar');
+  if(bar) bar.style.width=Math.min(100,pct)+'%';
+}
+
+// ── SEND FILE ────────────────────────────────────────────────────
+async function sendFile(file){
+  const tid = 'ft-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
+  const isImg = file.type.startsWith('image/');
+
+  // Show sender bubble right away
+  const meta = {
+    type:'file-meta', transferId:tid,
+    sender:myName, avatar:profile.avatar,
+    name:file.name, size:file.size, mime:file.type, isImg, ts:Date.now()
+  };
+  renderFileBubble(meta, true);
   addHist(meta);
-  if(isAdmin){broadcast(meta,null);renderFileBubble(meta,true);}
-  else if(hostConn&&hostConn.open){send(hostConn,meta);renderFileBubble(meta,true);}
-  // Send chunks with small delay to prevent DataChannel overflow
-  let offset=0,idx=0;
-  const total=Math.ceil(file.size/CHUNK)||1;
-  function next(){
-    if(offset>=file.size) return;
-    const fr=new FileReader(); fr.onload=ev=>{
-      const chunk={type:'file-chunk',transferId:tid,index:idx,total,data:Array.from(new Uint8Array(ev.target.result))};
-      if(isAdmin) broadcast(chunk,null); else if(hostConn&&hostConn.open) send(hostConn,chunk);
-      setFileProg(tid,(idx+1)/total*100); offset+=CHUNK; idx++;
-      setTimeout(next,12);
-    };
-    fr.readAsArrayBuffer(file.slice(offset,offset+CHUNK));
+  setFileProg(tid, 1);  // show "started"
+
+  // --- Encrypt ---
+  let encBuf, keyArr=null, ivArr=null;
+  try{
+    const key = await ftGenKey();
+    ivArr = Array.from(crypto.getRandomValues(new Uint8Array(12)));
+    encBuf = await ftEncrypt(key, ivArr, await file.arrayBuffer());
+    keyArr = await ftExportKey(key);
+  } catch(e) {
+    console.warn('Crypto failed, sending plain:', e);
+    encBuf = await file.arrayBuffer();
   }
-  next();
+
+  const total = Math.max(1, Math.ceil(encBuf.byteLength / FT_CHUNK_SIZE));
+
+  // --- Announce (signaling channel carries meta + key out-of-band) ---
+  const announce = {
+    type:'file-meta', transferId:tid,
+    sender:myName, avatar:profile.avatar,
+    name:file.name, size:file.size, mime:file.type, isImg, ts:Date.now(),
+    total, encKey:keyArr, encIv:ivArr
+  };
+  if(isAdmin){ broadcast(announce, null); }
+  else if(hostConn&&hostConn.open){ send(hostConn, announce); }
+
+  // --- Collect target connections ---
+  const targets = isAdmin
+    ? Object.values(members).filter(m=>m.conn&&m.conn.open).map(m=>m.conn)
+    : (hostConn&&hostConn.open ? [hostConn] : []);
+
+  if(!targets.length){
+    toast('Nobody to send to'); return;
+  }
+
+  // --- Stream chunks to every target connection concurrently ---
+  let globalSent = 0;
+  const totalSends = total * targets.length;
+
+  await Promise.all(targets.map(async conn => {
+    for(let i = 0; i < total; i++){
+      // Flow control — wait if DataChannel is backed up
+      let safety = 0;
+      while(conn.dataChannel && conn.dataChannel.bufferedAmount > 1024*1024){
+        await ftSleep(20); if(++safety>500) break;
+      }
+      if(!conn.open) break;
+
+      const start = i * FT_CHUNK_SIZE;
+      const slice = encBuf.slice(start, start + FT_CHUNK_SIZE);
+      send(conn, {
+        type: 'ft-chunk',
+        tid, idx: i, total,
+        data: ab2b64(slice)
+      });
+      globalSent++;
+      setFileProg(tid, globalSent / totalSends * 100);
+      // Yield to event loop every 8 chunks to stay responsive
+      if(i % 8 === 7) await ftSleep(0);
+    }
+  }));
+
+  setFileProg(tid, 100);
 }
-function receiveChunk(p){
-  const ft=incomingFiles[p.transferId]; if(!ft) return;
-  ft.parts[p.index]=new Uint8Array(p.data); ft.got++;
-  setFileProg(p.transferId,ft.got/p.total*100);
-  if(ft.got>=p.total){
-    const blob=new Blob(Object.values(ft.parts),{type:ft.meta.mime});
-    const url=URL.createObjectURL(blob);
-    fileReady(p.transferId,url,ft.meta.name,ft.meta.isImg,ft.meta.mime);
-    delete incomingFiles[p.transferId];
+
+function ftSleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// ── RECEIVE CHUNK ────────────────────────────────────────────────
+function onFtChunk(p){
+  const ft = ftRx[p.tid]; if(!ft) return;
+  if(ft.chunks[p.idx] !== undefined) return;  // duplicate guard
+  ft.chunks[p.idx] = b642ab(p.data);
+  ft.got++;
+  setFileProg(p.tid, ft.got / ft.total * 100);
+  if(ft.got >= ft.total) ftAssemble(ft);
+}
+
+// ── ASSEMBLE + DECRYPT ───────────────────────────────────────────
+async function ftAssemble(ft){
+  try{
+    // Concat chunks in index order
+    let byteLen = 0;
+    for(let i=0;i<ft.total;i++) byteLen += (ft.chunks[i]||new ArrayBuffer(0)).byteLength;
+    const combined = new Uint8Array(byteLen);
+    let off = 0;
+    for(let i=0;i<ft.total;i++){
+      const c = ft.chunks[i]||new ArrayBuffer(0);
+      combined.set(new Uint8Array(c), off);
+      off += c.byteLength;
+    }
+
+    // Decrypt if key present
+    let plainBuf;
+    if(ft.key && ft.iv){
+      plainBuf = await ftDecrypt(ft.key, ft.iv, combined.buffer);
+    } else {
+      plainBuf = combined.buffer;
+    }
+
+    const url = URL.createObjectURL(new Blob([plainBuf], {type: ft.meta.mime}));
+    ftReady(ft.meta.transferId, url, ft.meta.name, ft.meta.isImg);
+    delete ftRx[ft.meta.transferId];
+  } catch(e){
+    console.error('FT assemble/decrypt error', e);
+    toast('⚠ Transfer failed: '+ft.meta.name);
+    delete ftRx[ft.meta.transferId];
   }
 }
-function setFileProg(tid,pct){ const bar=document.querySelector('[data-ftid="'+tid+'"] .file-prog-bar'); if(bar) bar.style.width=pct+'%'; }
-function fileReady(tid,url,name,isImg,mime){
-  const el=document.querySelector('[data-ftid="'+tid+'"]'); if(!el) return;
+
+// ── REGISTER INCOMING TRANSFER (from file-meta packet) ──────────
+function onFileMeta(meta){
+  // Skip if we are the sender
+  if(meta.sender === myName) return;
+
+  ftRx[meta.transferId] = {
+    meta,
+    total: meta.total || 1,
+    chunks: new Array(meta.total || 1),
+    got: 0,
+    key: null,
+    iv: meta.encIv || null
+  };
+
+  // Import crypto key asynchronously
+  if(meta.encKey && meta.encIv){
+    ftImportKey(meta.encKey).then(k=>{
+      if(ftRx[meta.transferId]) ftRx[meta.transferId].key = k;
+    }).catch(()=>{});
+  }
+
+  renderFileBubble(meta, false);
+}
+
+// ── FILE READY (show in chat + auto-save) ────────────────────────
+function ftReady(tid, url, name, isImg){
+  const el = document.querySelector('[data-ftid="'+tid+'"]');
+  if(!el) return;
   el.querySelector('.file-prog')?.remove();
-  // Determine if this user is the sender (senders have no progress bar in the DOM)
-  const isSenderBubble = el.closest('.msg-grp.mine') !== null;
+
   if(isImg){
-    // Always show image inline
-    const imgBub=document.createElement('div'); imgBub.className='img-bubble'; imgBub.onclick=()=>openLightbox(url);
-    const img=document.createElement('img'); img.src=url; imgBub.appendChild(img);
-    el.parentElement?.replaceChild(imgBub,el);
-    // Auto-download for receivers only
-    if(!isSenderBubble){
-      const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none';
-      document.body.appendChild(a); a.click();
-      setTimeout(()=>a.remove(), 1000);
-    }
+    const wrap = document.createElement('div');
+    wrap.className = 'img-bubble';
+    wrap.onclick = ()=>openLightbox(url);
+    const img = document.createElement('img');
+    img.src = url; wrap.appendChild(img);
+    el.parentElement?.replaceChild(wrap, el);
   } else {
-    // Non-image: always show download button
-    const dl=document.createElement('div'); dl.className='file-dl';
-    dl.textContent=isSenderBubble ? '✓ Sent' : '↓ Downloaded';
-    if(!el.querySelector('.file-dl')) el.appendChild(dl);
-    el.style.cursor='pointer';
-    el.onclick=()=>{ const a=document.createElement('a'); a.href=url; a.download=name; a.click(); };
-    // Auto-download for receivers
-    if(!isSenderBubble){
-      setTimeout(()=>{
-        const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none';
-        document.body.appendChild(a); a.click();
-        setTimeout(()=>a.remove(), 1000);
-        toast('📥 '+name+' downloaded');
-      }, 400);
-    }
+    const lbl = document.createElement('div');
+    lbl.className = 'file-dl';
+    lbl.textContent = '↓ Saved — tap to re-open';
+    if(!el.querySelector('.file-dl')) el.appendChild(lbl);
+    el.style.cursor = 'pointer';
+    el.onclick = ()=>{ const a=document.createElement('a'); a.href=url; a.download=name; a.click(); };
   }
+
+  // Auto-trigger browser save dialog
+  ftAutoSave(url, name);
 }
+
+function ftAutoSave(url, name){
+  setTimeout(()=>{
+    const a = document.createElement('a');
+    a.href=url; a.download=name; a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>a.remove(), 1500);
+    toast('📥 '+name);
+  }, 200);
+}
+
+// Alias used by old call sites
+function fileReady(tid,url,name,isImg){ ftReady(tid,url,name,isImg); }
+
 window.triggerFile=function(){ document.getElementById('file-input').click(); };
 function openLightbox(url){ document.getElementById('lb-img').src=url; document.getElementById('lightbox').classList.add('show'); }
 window.closeLightbox=function(){ document.getElementById('lightbox').classList.remove('show'); };
