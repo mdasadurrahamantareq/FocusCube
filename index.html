@@ -311,8 +311,8 @@ input[type=number]{-moz-appearance:textfield}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
 /* ══ CAT ══════════════════════════════════════════════════════ */
-#cat-layer{position:fixed;bottom:0;left:0;right:0;height:80px;pointer-events:none;z-index:14;overflow:hidden}
-#cat-sprite{position:absolute;bottom:10px;font-size:clamp(26px,4.5vw,38px);line-height:1;pointer-events:none;filter:drop-shadow(0 2px 5px rgba(0,0,0,.15));user-select:none}
+#cat-layer{position:fixed;inset:0;pointer-events:none;z-index:14;}
+#cat-sprite{position:absolute;font-size:clamp(26px,4.5vw,38px);line-height:1;pointer-events:none;filter:drop-shadow(0 2px 5px rgba(0,0,0,.15));user-select:none;transition:none;}
 @keyframes catWalk{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes catRun{0%,100%{transform:translateY(0)}33%,66%{transform:translateY(-6px)}}
 @keyframes catSit{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
@@ -334,7 +334,7 @@ input[type=number]{-moz-appearance:textfield}
 .cat-yawn  #cat-sprite{animation:catYawn   1.2s ease-in-out 1}
 .cat-pounce #cat-sprite{animation:catPounce .6s ease-in-out 1}
 #cat-sprite.cat-flip{transform:scaleX(-1)}
-.cat-bubble{position:absolute;bottom:56px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:3px 9px;font-size:var(--fs-xs);color:var(--ink);white-space:nowrap;box-shadow:var(--shadow);opacity:0;transition:opacity .2s;pointer-events:none}
+.cat-bubble{position:absolute;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:3px 9px;font-size:var(--fs-xs);color:var(--ink);white-space:nowrap;box-shadow:var(--shadow);opacity:0;transition:opacity .2s;pointer-events:none;transform:translate(-50%,-110%)}
 .cat-bubble.show{opacity:1}
 
 /* ══ RESPONSIVE: hide sidebar on small screens ══════════════ */
@@ -422,9 +422,16 @@ input[type=number]{-moz-appearance:textfield}
 <!-- ══ CHAT ══════════════════════════════════════════════════════ -->
 <div id="scr-chat" class="screen">
 
-  <!-- Sidebar -->
   <aside id="sidebar">
     <div class="sb-hdr">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+        <svg width="20" height="20" viewBox="0 0 40 40" fill="none" style="flex-shrink:0">
+          <path d="M20 4L35 12.5V14L20 22.5L5 14V12.5L20 4Z" fill="#E0E5DF" stroke="#4E7C59" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M5 14V27.5L20 36V22.5L5 14Z" fill="#D6DBD5" stroke="#4E7C59" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M35 14V27.5L20 36V22.5L35 14Z" fill="#B8C4B7" stroke="#4E7C59" stroke-width="1.4" stroke-linejoin="round"/>
+        </svg>
+        <span style="font-size:var(--fs-md);font-weight:700;letter-spacing:-.02em;color:var(--ink)">Focus<span style="color:var(--accent)">Cube</span></span>
+      </div>
       <div class="sb-title">Room</div>
       <div class="sb-room" id="sb-room-num">—</div>
       <div class="sb-stats">
@@ -735,46 +742,87 @@ function updateSidebar(){
 /* ── CAT ─────────────────────────────────────────────────────── */
 const CAT_FACES={walk:'🐱',run:'🐈',sit:'😺',sleep:'😴',wave:'😸',happy:'😻',type:'🐱',stretch:'🙆',yawn:'🥱',pounce:'😼'};
 const CAT_SAYS=['meow~','pspsps…','*purring*','mrrp!','nya~','zzz…','(=^･ω･^=)','hello there','pay attention!','>.<','*yawns*'];
-let catX=0,catDir=1,catTarget=0,catMood='walk';
-let catRAF=null,catMoodTimer=null,catBubTimer=null;
+let catX=100, catY=window.innerHeight-60;
+let catVX=0, catVY=0;
+let catTargetX=100, catTargetY=window.innerHeight-60;
+let catMood='walk';
+let catRAF=null, catMoodTimer=null, catBubTimer=null;
+const CAT_SIZE=40; // approximate sprite px size
+
+function getCatEl(){ return document.getElementById('cat-sprite'); }
+function getCatBub(){ return document.getElementById('cat-bubble'); }
+
 function setCatMood(m){
   catMood=m;
-  const s=document.getElementById('cat-sprite'); if(!s) return;
+  const s=getCatEl(); if(!s) return;
   s.textContent=CAT_FACES[m]||'🐱';
   document.getElementById('cat-layer').className='cat-'+m;
 }
+
 function catPickTarget(){
-  catTarget=Math.random()*(window.innerWidth-70)+10;
-  catDir=catTarget>catX?1:-1;
-  const s=document.getElementById('cat-sprite');
-  if(s){ s.className=catDir<0?'cat-flip':''; }
-  setCatMood(Math.random()>.3?'walk':'run');
+  // Pick a random point anywhere on screen (with padding so cat stays visible)
+  const pad=CAT_SIZE;
+  catTargetX = pad + Math.random()*(window.innerWidth  - pad*2);
+  catTargetY = pad + Math.random()*(window.innerHeight - pad*2);
+  const dx=catTargetX-catX, dy=catTargetY-catY;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  // Flip sprite based on horizontal direction
+  const s=getCatEl();
+  if(s){ s.className=dx<0?'cat-flip':''; }
+  // Run for long distances, walk for short
+  setCatMood(dist>250?'run':'walk');
   moveCat();
 }
+
 function moveCat(){
   cancelAnimationFrame(catRAF);
-  const sp=catMood==='run'?4.5:2.5;
-  catX+=catDir*sp;
-  const s=document.getElementById('cat-sprite'); if(s) s.style.left=catX+'px';
-  if(Math.abs(catX-catTarget)<5){
+  const speed = catMood==='run' ? 5 : 2.8;
+  const dx=catTargetX-catX, dy=catTargetY-catY;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<5){
+    // Arrived — pick an idle mood
     const idles=['sit','sleep','yawn','stretch'];
     setCatMood(idles[Math.floor(Math.random()*idles.length)]);
     clearTimeout(catMoodTimer);
-    catMoodTimer=setTimeout(()=>{ if(Math.random()>.5) showCatBubble(); catPickTarget(); },2500+Math.random()*4000);
+    catMoodTimer=setTimeout(()=>{ if(Math.random()>.45) showCatBubble(); catPickTarget(); }, 2500+Math.random()*4000);
+    positionCat();
     return;
   }
+  // Move towards target
+  const nx=dx/dist, ny=dy/dist;
+  catX += nx*speed;
+  catY += ny*speed;
+  // Clamp to screen
+  catX = Math.max(0, Math.min(window.innerWidth  - CAT_SIZE, catX));
+  catY = Math.max(0, Math.min(window.innerHeight - CAT_SIZE, catY));
+  positionCat();
   catRAF=requestAnimationFrame(moveCat);
 }
+
+function positionCat(){
+  const s=getCatEl(); if(!s) return;
+  s.style.left=catX+'px';
+  s.style.top =catY+'px';
+  // Keep bubble near cat
+  const b=getCatBub(); if(!b) return;
+  b.style.left=(catX + CAT_SIZE/2)+'px';
+  b.style.top =catY+'px';
+}
+
 function showCatBubble(t){
-  const b=document.getElementById('cat-bubble'); if(!b) return;
+  const b=getCatBub(); if(!b) return;
   b.textContent=t||CAT_SAYS[Math.floor(Math.random()*CAT_SAYS.length)];
-  b.style.left=Math.max(4,Math.min(window.innerWidth-160,catX-10))+'px';
   b.classList.add('show'); clearTimeout(catBubTimer);
   catBubTimer=setTimeout(()=>b.classList.remove('show'),2100);
 }
-function catOnMsg(){ cancelAnimationFrame(catRAF); clearTimeout(catMoodTimer); const m=['happy','wave']; setCatMood(m[Math.floor(Math.random()*m.length)]); if(Math.random()>.4) showCatBubble(['meow~','nya!','(=^･ω･^=)'][Math.floor(Math.random()*3)]); catMoodTimer=setTimeout(catPickTarget,1500); }
+function catOnMsg(){ cancelAnimationFrame(catRAF); clearTimeout(catMoodTimer); setCatMood(['happy','wave'][Math.floor(Math.random()*2)]); if(Math.random()>.4) showCatBubble(['meow~','nya!','(=^･ω･^=)'][Math.floor(Math.random()*3)]); catMoodTimer=setTimeout(catPickTarget,1500); }
 function catOnType(a){ if(a){cancelAnimationFrame(catRAF);clearTimeout(catMoodTimer);setCatMood('type');}else catPickTarget(); }
-function startCat(){ catX=window.innerWidth+60;catDir=-1;const s=document.getElementById('cat-sprite');if(s){s.style.left=catX+'px';s.className='cat-flip';}catPickTarget(); }
+function startCat(){
+  // Start from off-screen right, middle height
+  catX=window.innerWidth+40; catY=window.innerHeight/2;
+  const s=getCatEl(); if(s){s.style.left=catX+'px';s.style.top=catY+'px';s.className='cat-flip';}
+  catPickTarget();
+}
 
 /* ── AVATAR HELPERS ──────────────────────────────────────────── */
 function readImg(file,cb){ const r=new FileReader(); r.onload=e=>cb(e.target.result); r.readAsDataURL(file); }
@@ -1080,15 +1128,35 @@ function setFileProg(tid,pct){ const bar=document.querySelector('[data-ftid="'+t
 function fileReady(tid,url,name,isImg,mime){
   const el=document.querySelector('[data-ftid="'+tid+'"]'); if(!el) return;
   el.querySelector('.file-prog')?.remove();
+  // Determine if this user is the sender (senders have no progress bar in the DOM)
+  const isSenderBubble = el.closest('.msg-grp.mine') !== null;
   if(isImg){
+    // Always show image inline
     const imgBub=document.createElement('div'); imgBub.className='img-bubble'; imgBub.onclick=()=>openLightbox(url);
     const img=document.createElement('img'); img.src=url; imgBub.appendChild(img);
     el.parentElement?.replaceChild(imgBub,el);
+    // Auto-download for receivers only
+    if(!isSenderBubble){
+      const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>a.remove(), 1000);
+    }
   } else {
-    const dl=document.createElement('div'); dl.className='file-dl'; dl.textContent='↓ Tap to download';
+    // Non-image: always show download button
+    const dl=document.createElement('div'); dl.className='file-dl';
+    dl.textContent=isSenderBubble ? '✓ Sent' : '↓ Downloaded';
     if(!el.querySelector('.file-dl')) el.appendChild(dl);
     el.style.cursor='pointer';
     el.onclick=()=>{ const a=document.createElement('a'); a.href=url; a.download=name; a.click(); };
+    // Auto-download for receivers
+    if(!isSenderBubble){
+      setTimeout(()=>{
+        const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none';
+        document.body.appendChild(a); a.click();
+        setTimeout(()=>a.remove(), 1000);
+        toast('📥 '+name+' downloaded');
+      }, 400);
+    }
   }
 }
 window.triggerFile=function(){ document.getElementById('file-input').click(); };
