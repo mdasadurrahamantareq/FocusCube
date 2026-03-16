@@ -159,7 +159,10 @@ input[type=number]{-moz-appearance:textfield}
 .conn-pill{display:flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:10px;font-size:var(--fs-xs);font-weight:600;background:var(--accent-bg);color:var(--accent-dk);transition:all .3s;flex-shrink:0}
 .conn-pill.warn{background:var(--amber-bg);color:var(--amber)}
 .conn-pill.bad{background:var(--red-bg);color:var(--red)}
+.conn-pill.idle{background:rgba(150,150,150,.12);color:var(--sub)}
+.conn-pill.live{background:var(--accent-bg);color:var(--accent-dk)}
 .conn-dot{width:4px;height:4px;border-radius:50%;background:currentColor;animation:blink 2.4s infinite}
+.conn-pill.idle .conn-dot{animation:none;opacity:.5}
 
 /* ══ GLOWING CLOCK ═══════════════════════════════════════════ */
 .glow-clock{display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0;padding:0 4px}
@@ -270,10 +273,16 @@ input[type=number]{-moz-appearance:textfield}
 .input-row:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 #txt{flex:1;border:none;background:none;font-family:var(--font);font-size:var(--fs-md);color:var(--ink);resize:none;outline:none;max-height:120px;line-height:1.5;padding:2px 0;height:22px}
 #txt::placeholder{color:var(--sub);opacity:.55}
-.send-btn{width:clamp(30px,3.5vw,36px);height:clamp(30px,3.5vw,36px);flex-shrink:0;background:var(--accent);border:none;border-radius:8px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .12s}
-.send-btn:hover{opacity:.87}.send-btn:active{transform:scale(.93)}
+.send-btn{
+  width:clamp(36px,4.2vw,42px);height:clamp(36px,4.2vw,42px);
+  flex-shrink:0;background:var(--accent);border:none;
+  border-radius:10px;color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity .15s,transform .12s;
+}
+.send-btn:hover{opacity:.87}.send-btn:active{transform:scale(.92)}
 .send-btn:disabled{opacity:.24;cursor:not-allowed;transform:none}
-.send-btn svg{width:14px;height:14px}
+.send-btn svg{width:18px;height:18px}
 #emoji-kb{background:var(--surface);border-top:1px solid var(--border);padding:7px 9px;display:none;flex-wrap:wrap;gap:2px;max-height:130px;overflow-y:auto}
 #emoji-kb.open{display:flex}
 .ek-btn{font-size:clamp(16px,2.2vw,20px);cursor:pointer;padding:3px;border-radius:5px;border:none;background:none;transition:transform .1s}
@@ -465,6 +474,7 @@ input[type=number]{-moz-appearance:textfield}
         <div class="glow-time" id="glow-time">00:00:00</div>
         <div class="glow-ampm" id="glow-ampm">AM</div>
         <div class="glow-greeting" id="glow-greeting">Good morning</div>
+        <div class="glow-date" id="glow-date" style="font-size:var(--fs-xs);color:var(--sub);letter-spacing:.04em;line-height:1;margin-top:2px;text-align:center;"></div>
       </div>
       <div class="hd-right">
         <div class="conn-pill" id="conn-pill"><div class="conn-dot"></div><span id="conn-lbl">Live</span></div>
@@ -490,8 +500,11 @@ input[type=number]{-moz-appearance:textfield}
     <div class="input-wrap">
       <div class="input-toolbar">
         <button class="tb-btn" id="emoji-tb" onclick="toggleEmojiKb()">😊 Emoji</button>
-        <button class="tb-btn" onclick="triggerFile()">📎 File</button>
-        <input type="file" id="file-input" style="display:none">
+        <button class="tb-btn" onclick="triggerImg()" title="Send image">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Image
+        </button>
+        <input type="file" id="img-input" style="display:none" accept="image/*">
         <div style="flex:1"></div>
         <div class="theme-row" id="chat-themes" style="gap:5px">
           <div class="tsw" data-theme="default" style="background:linear-gradient(135deg,#F0F2EF 50%,#4E7C59);width:20px;height:20px;border-radius:5px" title="Sage"></div>
@@ -505,8 +518,12 @@ input[type=number]{-moz-appearance:textfield}
       </div>
       <div class="input-row">
         <textarea id="txt" placeholder="Write a message…" rows="1"></textarea>
-        <button class="send-btn" id="send-btn" onclick="sendMsg()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        <button class="send-btn" id="send-btn" onclick="sendMsg()" title="Send">
+          <!-- Paper-plane icon matching the provided reference -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13"/>
+            <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -691,9 +708,17 @@ function updateClock(){
   const timeStr=pad(h12)+':'+pad(m)+':'+pad(s);
   const hr=now.getHours();
   const greeting=hr>=5&&hr<12?'Good morning ☀️':hr>=12&&hr<17?'Good afternoon 🌤':hr>=17&&hr<21?'Good evening 🌆':'Good night 🌙';
+  // Full date: weekday, day month year
+  const weekday=now.toLocaleDateString('en-US',{weekday:'short'});
+  const dayNum=now.getDate();
+  const monthName=now.toLocaleDateString('en-US',{month:'short'});
+  const year=now.getFullYear();
+  const dateStr=weekday+', '+dayNum+' '+monthName+' '+year;
   document.getElementById('glow-time').textContent=timeStr;
   document.getElementById('glow-ampm').textContent=ampm;
   document.getElementById('glow-greeting').textContent=greeting;
+  const dateEl=document.getElementById('glow-date');
+  if(dateEl) dateEl.textContent=dateStr;
 }
 function pad(n){ return String(n).padStart(2,'0'); }
 setInterval(updateClock,1000); updateClock();
@@ -843,6 +868,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(profile.name){ document.getElementById('inp-name').value=profile.name; setAvCirc('join-av','join-av-l',profile.avatar,profile.name[0]); }
   applyTheme(profile.theme); applyFont(profile.font);
   buildFontBtns('join-fonts');
+  // Auto-fill room from invite link: ?room=XXXXXX
+  const urlRoom=new URLSearchParams(location.search).get('room');
+  if(urlRoom) document.getElementById('inp-room').value=urlRoom;
 
   document.getElementById('jav-f').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; readImg(f,url=>{ profile.avatar=url; setAvCirc('join-av','join-av-l',url,(document.getElementById('inp-name').value||'?')[0]); }); });
   document.getElementById('pav-f').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; readImg(f,url=>{ profile.avatar=url; setAvCirc('prof-av','prof-av-l',url,myName[0]); }); });
@@ -851,9 +879,15 @@ document.addEventListener('DOMContentLoaded',()=>{
   const kb=document.getElementById('emoji-kb');
   ['😀','😂','🥰','😎','🤔','😅','🥹','😭','🤣','😍','🫡','🤯','😤','🥺','🫶','👍','👎','❤️','🔥','⭐','🎉','👀','🙌','💯','✅','🚀','💀','🤡','🫠','😴','🤝','💪','🙏','💬','📎','🎁','🍕','☕','🌟','😬','🙃','🫥','🥳','🤩','😻'].forEach(em=>{ const b=document.createElement('button'); b.className='ek-btn'; b.textContent=em; b.onclick=()=>insertEmoji(em); kb.appendChild(b); });
 
-  document.getElementById('file-input').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; e.target.value=''; sendFile(f); });
+  document.getElementById('img-input').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(!f) return; e.target.value='';
+    if(!f.type.startsWith('image/')){ toast('Only images are supported'); return; }
+    sendImageFile(f);
+  });
   const txt=document.getElementById('txt');
-  txt.addEventListener('input',()=>{ txt.style.height='auto'; txt.style.height=Math.min(txt.scrollHeight,120)+'px'; broadcastTyping(true); clearTimeout(myTypingTimer); myTypingTimer=setTimeout(()=>broadcastTyping(false),2500); });
+  txt.addEventListener('input',()=>{ txt.style.height='auto'; txt.style.height=Math.min(txt.scrollHeight,120)+'px'; setPresence('live'); broadcastTyping(true); clearTimeout(myTypingTimer); myTypingTimer=setTimeout(()=>{ broadcastTyping(false); setPresence('idle'); },2500); });
+  txt.addEventListener('focus',()=>setPresence('live'));
+  txt.addEventListener('blur', ()=>{ if(!txt.value.trim()){ setPresence('idle'); broadcastTyping(false); clearTimeout(myTypingTimer); } });
   txt.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();} });
   ['inp-name','inp-room','inp-pw'].forEach(id=>{ document.getElementById(id)?.addEventListener('keydown',e=>{if(e.key==='Enter') handleJoin();}); });
   document.addEventListener('click',e=>{
@@ -1201,6 +1235,7 @@ function onHostPkt(p){
       msgHistory.forEach(m=>renderMsg(m,false)); scrollBottom(); updateSidebar(); break;
     case 'members': applyMemberList(p.list); break;
     case 'chat':    addHist(p); renderMsg(p,true); catOnMsg(); updateSidebar(); break;
+    case 'img':     addHist(p); renderImgBubble(p,false); catOnMsg(); break;
     case 'sys':     addHist(p); renderMsg(p,true); break;
     case 'reaction':applyRxn(p.msgId,p.emoji,p.sender); break;
     case 'typing':  showTyping(p.sender,p.active); catOnType(p.active); break;
@@ -1236,6 +1271,11 @@ function handleIncoming(conn){
         const pkt={type:'chat',sender:name,text:p.text,ts:p.ts,avatar:members[name]?.avatar||''};
         addHist(pkt); broadcast(pkt,conn); renderMsg(pkt,true); catOnMsg(); updateSidebar(); break;
       }
+      case 'img':{
+        const name=nameByConn(conn); if(!name) break;
+        const pkt={type:'img',sender:name,avatar:members[name]?.avatar||'',dataUrl:p.dataUrl,name:p.name,ts:p.ts};
+        addHist(pkt); broadcast(pkt,conn); renderImgBubble(pkt,false); catOnMsg(); break;
+      }
       case 'typing':{ const name=nameByConn(conn); if(!name) break; broadcastRaw({type:'typing',sender:name,active:p.active},conn); showTyping(name,p.active); catOnType(p.active); break; }
       case 'reaction':{ const name=nameByConn(conn); if(!name) break; const rp={type:'reaction',msgId:p.msgId,emoji:p.emoji,sender:name}; broadcastRaw(rp,conn); applyRxn(p.msgId,p.emoji,name); break; }
       case 'file-meta':{
@@ -1256,15 +1296,28 @@ function handleIncoming(conn){
       // keepalive
       case 'ping': break;
       case 'rejoin':{
-        // Guest reconnected after network drop — re-register them
         const existingName = p.name;
         if(existingName && members[existingName]){
+          // Previously accepted member — silently restore their connection
           members[existingName].conn = conn;
           send(conn,{type:'history',messages:msgHistory});
           send(conn,{type:'members',list:Object.entries(members).map(([n,m])=>({name:n,isAdmin:!!m.isAdmin,avatar:m.avatar||''}))});
           if(roomPassword) send(conn,{type:'room-config',password:roomPassword});
-          setConn('live','Live');
+          send(conn,{type:'response',reqId:p.reqId||'rejoin',accepted:true});
+          renderSys(existingName+' reconnected','join-ev');
+          broadcastMembers();
+        } else if(existingName && p.referral){
+          // First-time guest arriving via auto-referral link — auto-accept without banner
+          if(!roomPassword || p.password===roomPassword){
+            members[existingName]={conn,isAdmin:false,avatar:p.avatar||''};
+            send(conn,{type:'response',reqId:p.reqId||'ref',accepted:true});
+            send(conn,{type:'history',messages:msgHistory});
+            if(roomPassword) send(conn,{type:'room-config',password:roomPassword});
+            const s={type:'sys',event:'join',text:existingName+' joined',ts:Date.now()};
+            addHist(s); broadcast(s,null); renderSys(existingName+' joined','join-ev'); broadcastMembers(); updateSidebar();
+          }
         }
+        setConn('live','Live');
         break;
       }
     }
@@ -1301,9 +1354,33 @@ window.sendMsg=function(){
   document.getElementById('send-btn').disabled=false; el.focus();
 };
 
-/* ── TYPING ──────────────────────────────────────────────────── */
-function broadcastTyping(active){ const p={type:'typing',sender:myName,active}; if(isAdmin) broadcastRaw(p,null); else if(hostConn&&hostConn.open) send(hostConn,p); }
-function clearMyTyping(){ clearTimeout(myTypingTimer); myTypingTimer=null; broadcastTyping(false); }
+/* ── PRESENCE — idle / live ──────────────────────────────────────
+   idle = user not currently typing
+   live = user is actively typing                                */
+let _presenceTimer = null;
+function setPresence(state){
+  const pill = document.getElementById('conn-pill');
+  if(!pill) return;
+  if(state==='live'){
+    pill.className='conn-pill live';
+    document.getElementById('conn-lbl').textContent='Live';
+  } else {
+    pill.className='conn-pill idle';
+    document.getElementById('conn-lbl').textContent='Idle';
+  }
+}
+
+function broadcastTyping(active){
+  const p={type:'typing',sender:myName,active};
+  if(isAdmin) broadcastRaw(p,null);
+  else if(hostConn&&hostConn.open) send(hostConn,p);
+  // Update own presence pill
+  setPresence(active?'live':'idle');
+}
+function clearMyTyping(){
+  clearTimeout(myTypingTimer); myTypingTimer=null;
+  broadcastTyping(false);
+}
 function showTyping(name,active){ clearTimeout(typingTimers[name]); if(active) typingTimers[name]=setTimeout(()=>showTyping(name,false),3000); else delete typingTimers[name]; const others=Object.keys(typingTimers); const row=document.getElementById('typing-row'); if(others.length){document.getElementById('tlbl').textContent=others.join(', ')+' typing…';row.classList.add('show');}else row.classList.remove('show'); }
 
 /* ── REACTIONS ───────────────────────────────────────────────── */
@@ -1580,7 +1657,84 @@ function ftAutoSave(url, name){
 // Alias used by old call sites
 function fileReady(tid,url,name,isImg){ ftReady(tid,url,name,isImg); }
 
-window.triggerFile=function(){ document.getElementById('file-input').click(); };
+window.triggerImg=function(){ document.getElementById('img-input').click(); };
+
+/* ── IMAGE SEND (base64 inline — no chunking for images) ────────
+   Images are read as base64 data URLs and sent as a single
+   {type:'img'} packet over the existing DataChannel. Images are
+   shown inline in chat immediately, not as file bubbles.
+   Max recommended size: ~3 MB (base64 overhead is ~33%).
+   Large images are resized client-side before sending.         */
+async function sendImageFile(file){
+  // Resize to max 1200px on longest side to keep packet small
+  const dataUrl = await resizeImage(file, 1200);
+  const pkt = {
+    type:'img',
+    sender: myName,
+    avatar: profile.avatar,
+    dataUrl,
+    name: file.name,
+    ts: Date.now()
+  };
+  addHist(pkt);
+  renderImgBubble(pkt, true);
+  if(isAdmin){ broadcast(pkt, null); }
+  else if(hostConn&&hostConn.open){ send(hostConn, {type:'img', dataUrl, name:file.name, ts:pkt.ts}); }
+  else toast('Not connected');
+}
+
+function resizeImage(file, maxPx){
+  return new Promise(res=>{
+    const r=new FileReader();
+    r.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const ratio=Math.min(1, maxPx/Math.max(img.width,img.height));
+        const w=Math.round(img.width*ratio), h=Math.round(img.height*ratio);
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',0.82));
+      };
+      img.src=ev.target.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+function renderImgBubble(pkt, isSender){
+  const msgsEl=document.getElementById('msgs');
+  document.getElementById('empty-state')?.remove();
+  const isMe = pkt.sender===myName;
+  const av = pkt.avatar||members[pkt.sender]?.avatar||'';
+  const date = new Date(pkt.ts||Date.now());
+  const day = date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+
+  if(day!==lastDay){ const d=document.createElement('div'); d.className='day-div'; d.textContent=day; msgsEl.appendChild(d); lastDay=day; curGrp=null; curGrpSender=null; }
+
+  if(curGrpSender!==pkt.sender){
+    const grp=document.createElement('div'); grp.className='msg-grp '+(isMe?'mine':'theirs');
+    if(!isMe){ const sl=document.createElement('div'); sl.className='sender-lbl'; sl.appendChild(makeAv(av,pkt.sender,'s-av-tiny')); sl.appendChild(document.createTextNode(' '+pkt.sender+(members[pkt.sender]?.isAdmin?' ★':''))); grp.appendChild(sl); }
+    msgsEl.appendChild(grp); curGrp=grp; curGrpSender=pkt.sender;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'img-bubble';
+  const imgEl = document.createElement('img');
+  imgEl.src = pkt.dataUrl;
+  imgEl.alt = pkt.name||'image';
+  imgEl.style.display='block';
+  imgEl.onclick = ()=>openLightbox(pkt.dataUrl);
+  wrap.appendChild(imgEl);
+  curGrp.appendChild(wrap);
+
+  // Timestamp
+  let t = curGrp.querySelector('.btime:last-child');
+  if(t&&t.parentNode===curGrp) t.remove();
+  t = document.createElement('div'); t.className='btime';
+  t.textContent = date.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  curGrp.appendChild(t);
+  scrollBottom();
+}
 function openLightbox(url){ document.getElementById('lb-img').src=url; document.getElementById('lightbox').classList.add('show'); }
 window.closeLightbox=function(){ document.getElementById('lightbox').classList.remove('show'); };
 
@@ -1593,6 +1747,7 @@ function renderMsg(msg,live){
   const el=document.getElementById('msgs');
   document.getElementById('empty-state')?.remove();
   if(msg.type==='sys'){ renderSys(msg.text,msg.event==='join'?'join-ev':msg.event==='admin'?'admin-ev':''); return; }
+  if(msg.type==='img'){ renderImgBubble(msg,msg.sender===myName); if(live) scrollBottom(); return; }
   if(msg.type==='file-meta'){ renderFileBubble(msg,msg.sender===myName); if(live) scrollBottom(); return; }
   const isMe=msg.sender===myName;
   const av=msg.avatar||members[msg.sender]?.avatar||'';
@@ -1664,17 +1819,45 @@ window.openTransferModal=function(){
 };
 window.doTransfer=function(target){
   closeModal('transfer-modal');
+  // Broadcast transfer to all — new admin's browser will call becomeHost()
   broadcastRaw({type:'transfer',newAdmin:target},null);
   broadcastSys({event:'admin',text:target+' is now the admin',ts:Date.now()});
-  peer.destroy(); isAdmin=false; peer=null; toast('Admin transferred to '+target);
-  members[target].isAdmin=true; if(members[myName]) members[myName].isAdmin=false;
+  members[target].isAdmin=true;
+  if(members[myName]) members[myName].isAdmin=false;
+  isAdmin=false;
+  // Stop heartbeat rebuild loop for admin
+  clearInterval(_heartbeatTimer);
+  clearTimeout(_reconnectTimer);
+  // Delay peer destroy so transfer packet reaches the new admin first
+  toast('Admin transferred to '+target);
   updateHeaderUI(); updateSidebar();
+  setTimeout(()=>{ if(peer&&!peer.destroyed) peer.destroy(); peer=null; },1500);
 };
+
 function becomeHost(){
+  if(isAdmin) return; // guard against double-call
   isAdmin=true;
   const np=new Peer(hostId(),peerCfg());
-  np.on('open',()=>{ peer=np; peer.on('connection',c=>handleIncoming(c)); updateHeaderUI(); updateSidebar(); toast('You are now the admin'); });
-  np.on('error',e=>toast('Host claim failed: '+e.message));
+  np.on('open',()=>{
+    peer=np;
+    peer.on('connection',c=>handleIncoming(c));
+    // Wire resilience for new admin
+    peer.on('disconnected',()=>{ if(_alive){ setConn('warn','Reconnecting…'); peer.reconnect(); } });
+    peer.on('error',e=>{ if(_alive&&e.type!=='unavailable-id') setTimeout(rebuildAdminPeer,3000); });
+    // Restart heartbeat for new admin
+    startHeartbeat();
+    updateHeaderUI(); updateSidebar();
+    toast('You are now the admin ★');
+  });
+  np.on('error',e=>{
+    if(e.type==='unavailable-id'){
+      // Old admin still holds ID — retry shortly
+      setTimeout(becomeHost,2000);
+    } else {
+      toast('Admin claim failed, retrying…');
+      setTimeout(becomeHost,3000);
+    }
+  });
 }
 
 /* ── ADMIN: KICK & CLEAR ─────────────────────────────────────── */
@@ -1728,6 +1911,7 @@ function enterChat(){
   updateHeaderUI();
   if(isAdmin) broadcastMembers(); else updateSidebar();
   startCat();
+  setPresence('idle');
 }
 function updateHeaderUI(){
   document.getElementById('hd-name').textContent=myName+(isAdmin?' ★':'');
@@ -1742,7 +1926,10 @@ function showScreen(id){
   if(id==='scr-chat'){ document.getElementById('sidebar').classList.remove('collapsed'); if(window.innerWidth<=640) document.getElementById('sidebar').classList.remove('mobile-open'); sidebarOpen=window.innerWidth>640; }
 }
 function scrollBottom(){ const el=document.getElementById('msgs'); requestAnimationFrame(()=>el.scrollTop=el.scrollHeight); }
-window.copyRoom=function(){ navigator.clipboard.writeText(roomNum).then(()=>toast('Copied!')); };
+window.copyRoom=function(){
+  const link=location.origin+location.pathname+'?room='+roomNum;
+  navigator.clipboard.writeText(link).then(()=>toast('Invite link copied!'));
+};
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2400); }
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function fmtSz(b){ if(b<1024) return b+'B'; if(b<1048576) return (b/1024).toFixed(1)+'KB'; if(b<1073741824) return (b/1048576).toFixed(1)+'MB'; return (b/1073741824).toFixed(1)+'GB'; }
